@@ -71,4 +71,4 @@ execute!(graph, GraphSolveSettings())
 ```
 By defining GraphSolveSettings with no fields the default settings will be used which will generally be the fastest. You can look at the documentation of the GraphSolveSettings struct for more information on the different available performance enchancements.
 
-Look at the [examples](https://github.com/Aeltumn/GraphSolve.jl/examples) folder for more examples on how to use the library.
+Look at the [examples](https://github.com/Aeltumn/GraphSolve.jl/tree/main/examples) folder for more examples on how to use the library.
