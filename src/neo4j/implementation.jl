@@ -1,0 +1,251 @@
+# Implements instructions against Neo4j.
+function create_connector(backend::Neo4jBackend, settings::GraphSolveSettings)
+    if backend.bolt
+        connector = create_bolt_connector(backend)
+    else
+        connector = HttpNeo4jConnector("$(backend.url)/db/$(backend.database)/tx/commit", determine_connection_headers(backend), backend.database, false)
+    end
+    
+    # Project the database into GDS if we want to use shortest path searching
+    if settings.mode == IncrementalPathSearch
+        query_cypher(settings.profiler, connector, "CALL gds.graph.drop('$(connector.database)', false)")
+        query_cypher(settings.profiler, connector, "CALL gds.graph.project('$(connector.database)', '*', '*')") 
+    end
+    return connector
+end
+
+function fetch_node_properties(profiler::TimerOutput, connector::CypherConnector, nodes::Set{Int}, path_instructions)
+    # Run a singular query to fetch all relevant properties
+    properties = Vector{String}()
+    push!(properties, "n.id")
+    for (target, instructions) in path_instructions
+        for instruction in instructions
+            push!(properties, "n.$(instruction.name)")
+        end
+    end
+    resp = query_cypher(profiler, connector, "MATCH (n) WHERE n.id IN [$(join(nodes, ","))] RETURN $(join(properties, ", "))")
+    for row_values in resp
+        node = row_values[1]
+        idx = 2
+        for (target, instructions) in path_instructions
+            if !haskey(target, node)
+                subdict = Dict{String, Any}()
+                for instruction in instructions
+                    value = row_values[idx]
+                    idx += 1
+                    subdict[instruction.name] = value
+                end
+                target[node] = subdict
+            else
+                idx += length(instructions)
+            end
+        end
+    end
+end
+
+function fetch_edge_properties(profiler::TimerOutput, connector::CypherConnector, edges::Set{Edge}, path_instructions)
+    # Run a singular query to fetch all relevant properties
+    properties = Vector{String}()
+    for (target, instructions) in path_instructions
+        for instruction in instructions
+            push!(properties, "e.$(instruction.name)")
+        end
+    end
+    if isempty(properties)
+        return
+    end
+    resp = query_cypher(profiler, connector, """
+        WITH [
+            $(join(["{src: $(it[1]), dst: $(it[2])}" for it in edges], ", "))
+        ] as pairs
+        UNWIND pairs as p
+        MATCH (s)-[e]->(t)
+        WHERE s.id = p.src AND t.id = p.dst
+        RETURN s.id, t.id, $(join(properties, ", "))
+    """)
+    for edge_values in resp
+        edge = (edge_values[1], edge_values[2])
+        idx = 3
+        for (target, instructions) in path_instructions
+            if !haskey(target, edge)
+                subdict = Dict{String, Any}()
+                for instruction in instructions
+                    value = edge_values[idx]
+                    idx += 1
+                    subdict[instruction.name] = value
+                end
+                target[edge] = subdict
+            else
+                idx += length(instructions)
+            end
+        end
+    end
+end
+
+function perform_node_pre_fetch(context::ExecutionContext, connector::CypherConnector)
+    @timeit context.profiler "node pre-fetching" begin
+        # Run an estimation query to determine if fetching all paths if feasible
+        source_conditions = Vector{String}()
+        source_query = as_query(context.source, "s")
+        if !isnothing(source_query.conditions)
+            append!(source_conditions, source_query.conditions)
+        end
+        if context.settings.push_down_constraints
+            i = 0
+            for constraint in context.source_constraints
+                i += 1
+                if isnothing(constraint.cypher)
+                    continue
+                end
+                push!(source_conditions, constraint.cypher)
+                deleteat!(context.source_constraints, i)
+                i -= 1
+            end
+        end
+        sources = query_cypher(context.profiler, connector, """
+            MATCH $(source_query.select)
+            $(merge_conditions(source_conditions))
+            RETURN $(join(context.source_properties, ", "))
+        """)
+        source_list = Vector{Int}()
+        for row_values in sources
+            sourceNode = row_values[1]
+            push!(source_list, sourceNode)
+            process_properties(context, context.source_properties_instructions, nothing, sourceNode, nothing, 2, row_values)
+        end
+        for constraint in context.source_constraints
+            filter!(source -> evaluate_constraint(constraint, source, nothing, nothing), source_list)
+        end
+        empty!(context.source_constraints)
+        context.source = IdNodeSelector(source_list)
+
+        target_conditions = Vector{String}()
+        target_query = as_query(context.target, "t")
+        if !isnothing(target_query.conditions)
+            append!(target_conditions, target_query.conditions)
+        end
+        if context.settings.push_down_constraints
+            i = 0
+            for constraint in context.target_constraints
+                i += 1
+                if isnothing(constraint.cypher)
+                    continue
+                end
+                push!(target_conditions, constraint.cypher)
+                deleteat!(context.target_constraints, i)
+                i -= 1
+            end
+        end
+        targets = query_cypher(context.profiler, connector, """
+            MATCH $(target_query.select)
+            $(merge_conditions(target_conditions))
+            RETURN $(join(context.target_properties, ", "))
+        """)
+        target_list = Vector{Int}()
+        for row_values in targets
+            targetNode = row_values[1]
+            push!(target_list, targetNode)
+            process_properties(context, nothing, context.target_properties_instructions, nothing, targetNode, 2, row_values)
+        end
+        for constraint in context.target_constraints
+            filter!(target -> evaluate_constraint(constraint, nothing, target, nothing), target_list)
+        end
+        empty!(context.target_constraints)
+        context.target = IdNodeSelector(target_list)
+    end
+end
+
+function get_all_paths(context::ExecutionContext, connector::CypherConnector, source::NodeSelector, target::NodeSelector)
+    @timeit context.profiler "get all paths" begin
+        if context.settings.all_paths_algorithm == Cypher
+            # Bake everything into the pre-conditions in this
+            # mode as we match against the path directly!
+            pre_conditions = Vector{String}()
+            from = as_query(source, "s")
+            to = as_query(target, "t")
+            if !isnothing(from.conditions)
+                append!(pre_conditions, from.conditions)
+            end
+            if !isnothing(to.conditions)
+                append!(pre_conditions, to.conditions)
+            end
+            append!(pre_conditions, context.query_conditions)
+
+            resp = query_cypher(context.profiler, connector, """
+                MATCH p = $(from.select)-[*]->$(to.select)
+                $(merge_conditions(pre_conditions))
+                RETURN $(get_merged_properties(context))
+            """)
+        elseif context.settings.all_paths_algorithm == ApocAll
+            resp = query_cypher(context.profiler, connector, """
+                $(as_query_variable(target, "target"))
+                MATCH $(flatten(as_query(source, "s")))
+                CALL apoc.path.expandConfig(s, {
+                    relationshipFilter: ">",
+                    endNodes: target
+                })
+                YIELD path
+                WITH path as p, nodes(path) AS elements
+                WITH p, elements[0] as s, elements[-1] as t
+                $(merge_conditions(context.query_conditions))
+                RETURN $(get_merged_properties(context))
+            """)
+        else
+            error("No valid strategy selected")
+        end
+
+        for row_values in resp
+            process_output_row(context, context.instruction.output, row_values)
+        end
+    end
+end
+
+function get_shortest_paths(context::ExecutionContext, connector::CypherConnector, source::NodeSelector, target::NodeSelector, output::Vector{Path})
+    @timeit context.profiler "get shortest paths" begin
+        resp = query_cypher(context.profiler, connector, """
+            $(as_query_variable(target, "target"))
+            MATCH $(flatten(as_query(source, "s")))
+            CALL apoc.path.expandConfig(s, {
+                endNodes: target,
+                relationshipFilter: ">",
+                uniqueness: "NODE_GLOBAL"
+            })
+            YIELD path
+            WITH path as p, nodes(path) AS elements
+            WITH p, elements[0] as s, elements[-1] as t
+            $(merge_conditions(context.query_conditions))
+            RETURN $(get_merged_properties(context))
+        """)
+        for row_values in resp
+            # Mark this as the shortest path search, so don't deny any paths from edge constraints outside the database.
+            # Otherwise we don't have any eligible pairs for incremental searching.
+            process_output_row(context, output, row_values, true, true)
+        end
+    end
+end
+
+function get_k_shortest_paths(context::ExecutionContext, connector::CypherConnector, source::Int, target::Int, k::Int, output::Vector{Path})
+    @timeit context.profiler "get k shortest paths" begin
+        count = 0
+        resp = query_cypher(context.profiler, connector, """
+            MATCH (s {id: $source}), (t {id: $target})
+            CALL gds.shortestPath.yens.stream(
+                '$(connector.database)',
+                {
+                    sourceNode: s,
+                    targetNode: t,
+                    k: $k
+                }
+            )
+            YIELD sourceNode, targetNode, path
+            WITH path as p, gds.util.asNode(sourceNode) as s, gds.util.asNode(targetNode) as t
+            RETURN $(get_merged_properties(context, false))
+        """)
+        for row_values in resp
+            if process_output_row(context, output, row_values, false)
+                count += 1
+            end
+        end
+        return count
+    end
+end
