@@ -208,12 +208,11 @@ function get_shortest_paths(context::ExecutionContext, connector::CypherConnecto
             CALL apoc.path.expandConfig(s, {
                 endNodes: target,
                 relationshipFilter: ">",
-                uniqueness: "NODE_GLOBAL"
+                uniqueness: "NODE_PATH"
             })
             YIELD path
             WITH path as p, nodes(path) AS elements
             WITH p, elements[0] as s, elements[-1] as t
-            $(merge_conditions(context.query_conditions))
             RETURN $(get_merged_properties(context))
         """)
         for row_values in resp

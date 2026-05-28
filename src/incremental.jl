@@ -57,6 +57,12 @@ function has_finished_search(context::ExecutionContext, state::IncrementalState)
             end
         end
         
+        # If this instruction doesn't rely on edges, never iterate as there is nothing to find!
+        if !context.instruction.include_edges
+            append!(context.instruction.output, copy)
+            return true
+        end
+
         # If we've exceeded the timeout, stop the search!
         if time() - context.instruction.optimal.start_time >= (Dates.value(Millisecond(context.instruction.optimal.timeout)) / 1000)
             append!(context.instruction.output, copy)
