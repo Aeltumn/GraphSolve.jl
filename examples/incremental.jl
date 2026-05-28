@@ -1,6 +1,6 @@
 """
-    A simple example of a bandwidth constrained configuration.
-    Assigns sources to destinations without exceeding any limits.
+    An example which shows how the algorithm performs
+    on an adversarial dataset.
 """
 
 # Build against dev prototype
@@ -29,19 +29,17 @@ function define_graph(backend::GraphBackend, settings::GraphSolveSettings)
     node_properties = NodePropertyDict()
     edge_properties = EdgePropertyDict()
     extract_node_properties!(graph, paths, node_properties, Source, "weight")
-    extract_node_properties!(graph, paths, node_properties, Destination, "max") 
     extract_edge_properties!(graph, paths, edge_properties, "max")
 
     # Define path constraints which apply to the path query directly
     @apply_path_constraint(graph, paths, edge_properties[edge]["max"] >= node_properties[src]["weight"])
-    @apply_path_constraint(graph, paths, node_properties[dst]["max"] >= node_properties[src]["weight"])
     
     # Define the optimal value of the problem
     @optimal(
         graph,
         paths,
-        # Try to find a solution that is within 10% of the optimal value!
-        0.9,
+        # Try to find the optimal solution!
+        1.0,
         # Maximize the value of the problem (should match the objective)
         Maximize,
         # Cap out at 1 hour of calculation time if we cannot find an optimal solution!
@@ -50,8 +48,7 @@ function define_graph(backend::GraphBackend, settings::GraphSolveSettings)
             min(
                 # The optimal value is the less of either the maximum weight or the minimum capacity depending
                 # on which is lower as it bounds the other.
-                sum([node_properties[s]["weight"] for s in sources]),
-                sum([node_properties[t]["max"] for t in destinations])
+                sum([node_properties[s]["weight"] for s in sources])
             )
         end
     )
@@ -65,13 +62,6 @@ function define_graph(backend::GraphBackend, settings::GraphSolveSettings)
             max = get(edge_properties[edge], "max", typemax(Int64))
             edge_paths = filter(it -> edge ∈ it.edges, paths)
             @constraint(model, sum(x[p.id] * node_properties[p.src]["weight"] for p in edge_paths) <= max)
-        end
-
-        # Ensure that the capacity of each destination node is not exceeded!
-        for node in get_destination_nodes(paths)
-            max = get(node_properties[node], "max", typemax(Int64))
-            node_paths = filter(it -> it.dst == node, paths)
-            @constraint(model, sum(x[p.id] * node_properties[p.src]["weight"] for p in node_paths) <= max)
         end
 
         # Set the objective, to maximize weight of selected paths!
@@ -94,6 +84,6 @@ end
 benchmark!(
     5,
     [
-        define_graph(Neo4jBackend("http://localhost:7474", "neo4j", ENV["NEO4J_PASSWORD"], "s100", false), GraphSolveSettings())
+        define_graph(JuliaGraphBackend("run/dataset/adversarial"), GraphSolveSettings())
     ]
 )

@@ -148,10 +148,9 @@ function incremental_path_search(context::ExecutionContext, connector::Connector
             shuffle!(rng, selectable)
             sort!(selectable, by = it -> it.k)
 
-            # If there were no valid tasks, we cannot improve the score! Just return the best score.
+            # If there were no valid tasks, we cannot improve the score anymore!
             if isempty(selectable)
-                append!(context.instruction.output, state.best_paths)
-                return
+                break
             end
 
             # Go through the first k selectables and create tasks
@@ -168,11 +167,6 @@ function incremental_path_search(context::ExecutionContext, connector::Connector
                 # Get k-shortest paths for this candidate, keep finding more paths every iteration
                 new_k = max(added_k_value, candidate.k + added_k_value)
                 candidate.k = new_k
-
-                # Never fetch more than the maximum paths!
-                if new_k > max_k_value
-                    continue
-                end
 
                 # Find the k-shortest paths for this group
                 tasks_scheduled += 1
@@ -197,6 +191,11 @@ function incremental_path_search(context::ExecutionContext, connector::Connector
                     if new_paths < (added_k_value - 5)
                         delete!(options, (candidate.src, candidate.dst))
                     end
+                end
+
+                # Never fetch more than the maximum paths!
+                if new_k >= max_k_value
+                    delete!(options, (candidate.src, candidate.dst))
                 end
             end
 
