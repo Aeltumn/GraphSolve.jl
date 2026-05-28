@@ -157,7 +157,7 @@ function incremental_path_search(context::ExecutionContext, connector::Connector
             # Go through the first k selectables and create tasks
             tasks = Vector{Task}()
             j = 0
-            l = 0
+            tasks_scheduled = 0
             for candidate in selectable
                 # Stop iterating when we reach the limit!
                 if j >= max_tasks
@@ -175,7 +175,7 @@ function incremental_path_search(context::ExecutionContext, connector::Connector
                 end
 
                 # Find the k-shortest paths for this group
-                l += 1
+                tasks_scheduled += 1
                 if context.settings.use_async_scheduling
                     push!(
                         tasks,
@@ -200,13 +200,14 @@ function incremental_path_search(context::ExecutionContext, connector::Connector
                 end
             end
 
-            # Wait for all queries to complete, otherwise return immediately!
-            if l <= 0
-                append!(context.instruction.output, state.best_paths)
-                return
-            end
+            # Wait for all queries to complete
             for task in tasks
                 wait(task)
+            end
+
+            # If there were no tasks, break the loop!
+            if tasks_scheduled <= 0
+                break
             end
         end
 
@@ -225,8 +226,14 @@ function incremental_path_search(context::ExecutionContext, connector::Connector
         end
     end
     
-    # Run constraint solving one more time!
-    if added_paths > 0 && has_finished_search(context, state)
-        return
+    # Run constraint solving one more time and return the best result!
+    if added_paths > 0
+        fetch_all_properties(context, connector, candidate_paths)
+        if has_finished_search(context, state)
+            return
+        end
+    end
+    if !isnothing(state.best_paths)
+        append!(context.instruction.output, state.best_paths)
     end
 end
