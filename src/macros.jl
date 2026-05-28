@@ -323,3 +323,12 @@ end
 function get_unique_edges(paths)
    return Set(Iterators.flatten(p.edges for p in paths))
 end
+
+"""
+    get_path_nodes
+
+    Returns the set of nodes a path goes across.
+"""
+function get_path_nodes(path)
+    return  [path.edges[1][1]; last.(path.edges)]
+end

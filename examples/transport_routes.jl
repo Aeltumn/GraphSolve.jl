@@ -1,6 +1,5 @@
 """
-    An example which shows how the algorithm performs
-    on an adversarial dataset.
+    An example where sources are assigned on a transport route to a destination.
 """
 
 # Build against dev prototype
@@ -21,36 +20,36 @@ function define_graph(backend::GraphBackend, settings::GraphSolveSettings)
     # Define which properties to extract
     node_properties = NodePropertyDict()
     edge_properties = EdgePropertyDict()
-    extract_node_properties!(graph, paths, node_properties, Source, "weight")
-    extract_edge_properties!(graph, paths, edge_properties, "max")
-
-    # Define path constraints which apply to the path query directly
-    @apply_path_constraint(graph, paths, edge_properties[edge]["max"] >= node_properties[src]["weight"])
+    extract_node_properties!(graph, paths, node_properties, Edges, "random") 
+    extract_edge_properties!(graph, paths, edge_properties, "weight")
+    
+    # Ensure every route contains a high value node
+    @apply_path_constraint(graph, paths, any(node -> node["random"] >= 80, nodes))
     
     # Define the optimal value of the problem
     @optimal(
         graph,
         paths,
-        1.0,
-        Maximize,
+        0.9,
+        Minimize,
         Hour(1),
         begin
-            sum([node_properties[s]["weight"] for s in sources])
+            # An ideal solution uses minimal route weights.
+            length(sources)
         end
     )
 
     # Define a problem to select paths from the path query
     function path_selection(model, paths, x)
-        # Ensure bandwidth of edges are not exceeded!
-        edges = get_unique_edges(paths)
-        for edge in edges
-            max = get(edge_properties[edge], "max", typemax(Int64))
-            edge_paths = filter(it -> edge ∈ it.edges, paths)
-            @constraint(model, sum(x[p.id] * node_properties[p.src]["weight"] for p in edge_paths) <= max)
+        # Ensure that every source is assigned
+        for node in get_source_nodes(paths)
+            filtered_paths = filter(it -> it.src == node, paths)
+            @constraint(model, sum(x[p.id] for p in filtered_paths) == 1)
         end
 
-        # Set the objective, to maximize weight of selected paths!
-        @objective(model, Max, sum(x[p.id] * node_properties[p.src]["weight"] for p in paths))
+        # Set the objective to minimize the total edge weights
+        weighted_paths = [(p, sum([edge_properties[e]["weight"] for e in p.edges])) for p in paths]
+        @objective(model, Max, sum(x[p.id] * weight for (p, weight) in weighted_paths))
     end
     define_problem!(graph, paths, path_selection)
 
@@ -67,8 +66,9 @@ end
 
 # Run all graph algorithms and determine database
 benchmark!(
-    5,
+    3,
     [
-        define_graph(JuliaGraphBackend("run/dataset/adversarial"), GraphSolveSettings())
-    ]
+        define_graph(Neo4jBackend("http://localhost:7474", "neo4j", ENV["NEO4J_PASSWORD"], "manual", false), GraphSolveSettings()),
+        define_graph(Neo4jBackend("http://localhost:7474", "neo4j", ENV["NEO4J_PASSWORD"], "s1000", false), GraphSolveSettings())
+    ],
 )

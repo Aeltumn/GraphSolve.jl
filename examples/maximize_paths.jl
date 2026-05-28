@@ -15,17 +15,10 @@ using Dates
 function define_graph(backend::GraphBackend, settings::GraphSolveSettings)
     graph = SolvableGraph(backend)
 
-    # Define a query to find the paths starting in half the sources and going to the destination
-    # include edges so we can add bandwidth constraints!
-    paths = find_paths!(
-        graph, 
-        MaximizeSelection, 
-        LabelNodeSelector("Source"),
-        LabelNodeSelector("Destination"),
-        true
-    )
+    # Define a query to find the paths
+    paths = find_paths!(graph, MaximizeSelection, LabelNodeSelector("Source"), LabelNodeSelector("Destination"), true)
 
-    # Define which properties should be extracted so they are available to reference later
+    # Define which properties to extract
     node_properties = NodePropertyDict()
     edge_properties = EdgePropertyDict()
     extract_node_properties!(graph, paths, node_properties, Source, "weight")

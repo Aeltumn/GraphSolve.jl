@@ -35,6 +35,7 @@ function has_finished_search(context::ExecutionContext, state::IncrementalState)
                 state.best_paths = copy
                 state.best_score = score
                 state.best_variables = variables
+                println("Obtained new best score of $(score) (optimal: $(state.optimal_score)) with $(length(copy)) paths selected")
             end
 
             if p >= 0.0 && score * p <= state.optimal_score
@@ -48,6 +49,7 @@ function has_finished_search(context::ExecutionContext, state::IncrementalState)
                 state.best_paths = copy
                 state.best_score = score
                 state.best_variables = variables
+                println("Obtained new best score of $(score) (optimal: $(state.optimal_score)) with $(length(copy)) paths selected")
             end
 
             if p >= 0.0 && state.optimal_score * p <= score
@@ -56,6 +58,9 @@ function has_finished_search(context::ExecutionContext, state::IncrementalState)
                 return true
             end
         end
+
+        # Log for every iteration so there's some progress tracker
+        println("Finished constraint solving iteration...")
         
         # If this instruction doesn't rely on edges, never iterate as there is nothing to find!
         if !context.instruction.include_edges
@@ -128,8 +133,8 @@ function incremental_path_search(context::ExecutionContext, connector::Connector
         # before we make an attempt to solve again.
         @timeit context.profiler "search for additional candidate paths" begin
             max_tasks = 500
-            added_k_value = 25
-            max_k_value = 100
+            added_k_value = 100
+            max_k_value = 10000
             minimum_paths = 5000
 
             # Determine sets of previously used logic
