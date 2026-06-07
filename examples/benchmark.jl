@@ -17,15 +17,27 @@ include("random_length_paths.jl")
 include("transport_routes.jl")
 
 # Run all graph algorithms and determine database
-neo4jHttp = Neo4jBackend("http://localhost:7474", "neo4j", ENV["NEO4J_PASSWORD"], "s1000", false)
-neo4jBolt = Neo4jBackend("neo4j://localhost:7687", "neo4j", ENV["NEO4J_PASSWORD"], "s100", true)
-julia = JuliaGraphBackend("run/test/s100")
+manual = Neo4jBackend("neo4j://localhost:7687", "neo4j", ENV["NEO4J_PASSWORD"], "manual", true)
+s100 = Neo4jBackend("neo4j://localhost:7687", "neo4j", ENV["NEO4J_PASSWORD"], "s100", true)
+s1000 = Neo4jBackend("neo4j://localhost:7687", "neo4j", ENV["NEO4J_PASSWORD"], "s1000", true)
+s10000 = Neo4jBackend("neo4j://localhost:7687", "neo4j", ENV["NEO4J_PASSWORD"], "s10000", true)
+unitedPower = Neo4jBackend("neo4j://localhost:7687", "neo4j", ENV["NEO4J_PASSWORD"], "united-power", true)
+mitPhone = Neo4jBackend("neo4j://localhost:7687", "neo4j", ENV["NEO4J_PASSWORD"], "mit-phone", true)
+slashdot = Neo4jBackend("neo4j://localhost:7687", "neo4j", ENV["NEO4J_PASSWORD"], "slashdot", true)
+
 benchmark!(
     3,
     [
-        define_bandwidth_constrained_graph(neo4jHttp, GraphSolveSettings()),
-        define_maximized_assignments_graph(neo4jHttp, GraphSolveSettings()),
-        define_random_length_paths_graph(neo4jHttp, GraphSolveSettings()),
-        define_transport_routes_graph(neo4jHttp, GraphSolveSettings()),
+        define_maximized_assignments_graph(manual, GraphSolveSettings()),
+        define_maximized_assignments_graph(s1000, GraphSolveSettings()),
+        define_maximized_assignments_graph(s10000, GraphSolveSettings()),
+        define_maximized_assignments_graph(unitedPower, GraphSolveSettings()),
+        define_maximized_assignments_graph(mitPhone, GraphSolveSettings()),
+        # define_maximized_assignments_graph(slashdot, GraphSolveSettings()),
+        
+        # define_maximized_assignments_graph(manual, GraphSolveSettings()),
+        # define_transport_routes_graph(manual, GraphSolveSettings()),
+        # define_bandwidth_constrained_graph(manual, GraphSolveSettings()),
+        # define_random_length_paths_graph(manual, GraphSolveSettings()),
     ]
 )

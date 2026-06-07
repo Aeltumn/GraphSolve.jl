@@ -20,7 +20,7 @@ function define_transport_routes_graph(backend::GraphBackend, settings::GraphSol
     @optimal(
         graph,
         paths,
-        0.9,
+        1.0,
         Minimize,
         Hour(1),
         begin

@@ -17,7 +17,7 @@ function define_maximized_assignments_graph(backend::GraphBackend, settings::Gra
     @optimal(
         graph,
         paths,
-        0.9,
+        1.0,
         Maximize,
         Hour(1),
         begin

@@ -5,7 +5,7 @@ function define_random_length_paths_graph(backend::GraphBackend, settings::Graph
     graph = SolvableGraph(backend)
 
     # Define a query to find the paths
-    paths = find_paths!(graph, MaximizeSelection, LabelNodeSelector("Source"), LabelNodeSelector("Destination"), true)
+    paths = find_paths!(graph, AssignSourcesToDestinations, LabelNodeSelector("Source"), LabelNodeSelector("Destination"), true)
 
     # Define which properties to extract
     node_properties = NodePropertyDict()
@@ -16,7 +16,7 @@ function define_random_length_paths_graph(backend::GraphBackend, settings::Graph
     @optimal(
         graph,
         paths,
-        0.9,
+        1.0,
         Maximize,
         Hour(1),
         begin

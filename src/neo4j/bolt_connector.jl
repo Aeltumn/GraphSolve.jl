@@ -9,7 +9,12 @@ using PythonCall
 function create_bolt_connector(backend::Neo4jBackend)    
     # Create the session object
     neo4j = pyimport("neo4j")
-    driver = neo4j.GraphDatabase.driver(backend.url, auth = (backend.user, backend.password))
+    driver = neo4j.GraphDatabase.driver(
+        backend.url, 
+        auth = (backend.user, backend.password),
+        connection_timeout=60,
+        max_connection_lifetime=24*3600
+    )
     session = driver.session(database = backend.database)
     return BoltNeo4jConnector(session, backend.database, false)
 end

@@ -549,15 +549,19 @@ function solve_constraints(context::ExecutionContext, problem_instruction::Probl
             # Disable variable names for speed-up
             set_string_names_on_creation(model, false)
 
-            # Define a variable for selecting from the paths
-            @variable(model, x[p=1:path_count], Bin)
-
             # If we are assigning sources directly we limit each source to at most one path!
             if context.instruction.goal == AssignSourcesToDestinations
+                # Define a variable for selecting from the paths
+                @variable(model, x[p=1:path_count], Bin)
+
                 for node in get_source_nodes(paths)
                     filtered_paths = filter(it -> it.src == node, paths)
                     @constraint(model, sum(x[p.id] for p in filtered_paths) <= 1)
                 end
+            elseif context.instruction.goal == MaximizeSelection
+                # If we want to maximize the selection we allow selecting
+                # entries multiple times.
+                @variable(model, x[p=1:path_count] >= 0, Int)
             end
 
             # Apply the user-defined constraints the model
@@ -583,7 +587,20 @@ function solve_constraints(context::ExecutionContext, problem_instruction::Probl
         out_values = collect([value(x[p.id]) for p in paths])
 
         # Filter paths vector based on inclusion in the variable
-        @timeit context.profiler "filter selected paths" filter!(p -> value(x[p.id]) >= 0.5, paths)
+        @timeit context.profiler "filter selected paths" begin
+            if context.instruction.goal == MaximizeSelection
+                # Create a list of all selected paths multiplied by how many
+                # copies we want of each!
+                paths_copy = Vector{Path}(paths)
+                empty!(paths)
+                for p in paths_copy
+                    count = round(Int, value(x[p.id]))
+                    append!(paths, fill(p, count))
+                end
+            else
+                filter!(p -> value(x[p.id]) >= 0.5, paths)
+            end
+        end
 
         # Store the score of the optimization
         return objective_value(model), out_values
