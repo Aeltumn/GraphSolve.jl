@@ -153,7 +153,7 @@ function convert_to_cypher(expr::Expr)
         end
     catch err
         # For testing, show error!
-        showerror(stdout, err, catch_backtrace())
+        # showerror(stdout, err, catch_backtrace())
         return nothing
     end
 end

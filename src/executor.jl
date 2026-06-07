@@ -49,19 +49,20 @@ function process_properties(
             for (target, instructions) in source_properties
                 if !haskey(target, sourceNode)
                     subdict = Dict{String, Any}()
-                    for instruction in instructions
-                        value = row_values[idx]
-                        idx += 1
-                        subdict[instruction.name] = value
-                    end
                     target[sourceNode] = subdict
                 else
-                    idx += length(instructions)
+                    subdict = target[sourceNode]
+                end
+                
+                for instruction in instructions
+                    value = row_values[idx]
+                    idx += 1
+                    subdict[instruction.name] = value
                 end
             end
             
             # Avoid doubling up on fetching node properties!
-            push!(context.fetched_node_ids, sourceNode)
+            push!(context.fetched_sources, sourceNode)
         end
     end
     if !isnothing(target_properties) && !isempty(target_properties)
@@ -69,19 +70,20 @@ function process_properties(
             for (target, instructions) in target_properties
                 if !haskey(target, targetNode)
                     subdict = Dict{String, Any}()
-                    for instruction in instructions
-                        value = row_values[idx]
-                        idx += 1
-                        subdict[instruction.name] = value
-                    end
                     target[targetNode] = subdict
                 else
-                    idx += length(instructions)
+                    subdict = target[targetNode]
+                end
+
+                for instruction in instructions
+                    value = row_values[idx]
+                    idx += 1
+                    subdict[instruction.name] = value
                 end
             end
 
             # Avoid doubling up on fetching node properties!
-            push!(context.fetched_node_ids, targetNode)
+            push!(context.fetched_targets, targetNode)
         end
     end
 end
@@ -91,7 +93,7 @@ end
 
     Processes one output row from a query with all properties baked in.
 """
-function process_output_row(context::ExecutionContext, target::Vector{Path}, row_values, supports_edge_properties::Bool=true, collection::Union{Set{Path}, Nothing}=nothing)
+function process_output_row(context::ExecutionContext, target::Vector{Path}, row_values, supports_edge_properties::Bool, collection::Union{Set{Path}, Nothing})
     # Extract the node ids
     sourceNode = row_values[1]
     targetNode = row_values[2]
@@ -111,17 +113,17 @@ function process_output_row(context::ExecutionContext, target::Vector{Path}, row
     # Filter based on non-edge constraints after we've extracted properties
     for constraint in context.source_constraints
         if !evaluate_constraint(constraint, sourceNode, nothing, nothing, nothing, nothing, nothing)
-            return false
+            return
         end
     end
     for constraint in context.target_constraints
         if !evaluate_constraint(constraint, nothing, targetNode, nothing, nothing, nothing, nothing)
-            return false
+            return
         end
     end
     for constraint in context.source_target_constraints
         if !evaluate_constraint(constraint, sourceNode, targetNode, nothing, nothing, nothing, nothing)
-            return false
+            return
         end
     end
 
@@ -131,7 +133,6 @@ function process_output_row(context::ExecutionContext, target::Vector{Path}, row
         if context.include_nodes
             path_nodes = row_values[3 + length(context.source_properties_instructions) + length(context.target_properties_instructions)]
             for node_values in path_nodes
-                println("Got node $(node_values)")
                 node = node_values[1]
                 idx = 2
                 if !isnothing(context.node_properties_instructions) && !isempty(context.node_properties_instructions)
@@ -139,19 +140,20 @@ function process_output_row(context::ExecutionContext, target::Vector{Path}, row
                         for (target, instructions) in context.node_properties_instructions
                             if !haskey(target, node)
                                 subdict = Dict{String, Any}()
-                                for instruction in instructions
-                                    value = row_values[idx]
-                                    idx += 1
-                                    subdict[instruction.name] = value
-                                end
                                 target[node] = subdict
                             else
-                                idx += length(instructions)
+                                subdict = target[node]
+                            end
+                            
+                            for instruction in instructions
+                                value = node_values[idx]
+                                idx += 1
+                                subdict[instruction.name] = value
                             end
                         end
                         
                         # Avoid doubling up on fetching node properties!
-                        push!(context.fetched_node_ids, node)
+                        push!(context.fetched_nodes, node)
                     end
                 end
 
@@ -188,14 +190,15 @@ function process_output_row(context::ExecutionContext, target::Vector{Path}, row
                             for (target, instructions) in context.edge_properties_instructions
                                 if !haskey(target, edge)
                                     subdict = Dict{String, Any}()
-                                    for instruction in instructions
-                                        value = edge_values[idx]
-                                        idx += 1
-                                        subdict[instruction.name] = value
-                                    end
                                     target[edge] = subdict
                                 else
-                                    idx += length(instructions)
+                                    subdict = target[edge]
+                                end
+
+                                for instruction in instructions
+                                    value = edge_values[idx]
+                                    idx += 1
+                                    subdict[instruction.name] = value
                                 end
                             end
                             
@@ -247,9 +250,7 @@ function process_output_row(context::ExecutionContext, target::Vector{Path}, row
     end
     if new_path ∉ target
         push!(target, new_path)
-        return true
     end
-    return false
 end
 
 """ 
@@ -368,8 +369,8 @@ function fetch_all_node_properties(context::ExecutionContext, connector::Connect
             push!(
                 tasks,
                 @async begin
-                    new_nodes = filter(it -> it ∉ context.fetched_node_ids, sources)
-                    union!(context.fetched_node_ids, new_nodes)
+                    new_nodes = filter(it -> it ∉ context.fetched_sources, sources)
+                    union!(context.fetched_sources, new_nodes)
                     if length(new_nodes) > 0
                         fetch_node_properties(context.profiler, connector, new_nodes, context.source_properties_instructions)
                     end
@@ -380,8 +381,8 @@ function fetch_all_node_properties(context::ExecutionContext, connector::Connect
             push!(
                 tasks,
                 @async begin
-                    new_nodes = filter(it -> it ∉ context.fetched_node_ids, targets)
-                    union!(context.fetched_node_ids, new_nodes)
+                    new_nodes = filter(it -> it ∉ context.fetched_targets, targets)
+                    union!(context.fetched_targets, new_nodes)
                     if length(new_nodes) > 0
                         fetch_node_properties(context.profiler, connector, new_nodes, context.target_properties_instructions)
                     end
@@ -392,8 +393,8 @@ function fetch_all_node_properties(context::ExecutionContext, connector::Connect
             push!(
                 tasks,
                 @async begin
-                    new_nodes = filter(it -> it ∉ context.fetched_node_ids, nodes)
-                    union!(context.fetched_node_ids, new_nodes)
+                    new_nodes = filter(it -> it ∉ context.fetched_nodes, nodes)
+                    union!(context.fetched_nodes, new_nodes)
                     if length(new_nodes) > 0
                         fetch_node_properties(context.profiler, connector, new_nodes, context.node_properties_instructions)
                     end
@@ -447,8 +448,8 @@ function fetch_all_properties(context::ExecutionContext, connector::Connector, p
                 tasks,
                 @async begin
                     all_nodes = get_source_nodes(paths)
-                    new_nodes = filter(it -> it ∉ context.fetched_node_ids, all_nodes)
-                    union!(context.fetched_node_ids, new_nodes)
+                    new_nodes = filter(it -> it ∉ context.fetched_sources, all_nodes)
+                    union!(context.fetched_sources, new_nodes)
                     if length(new_nodes) > 0
                         fetch_node_properties(context.profiler, connector, new_nodes, context.source_properties_instructions)
                     end
@@ -460,8 +461,8 @@ function fetch_all_properties(context::ExecutionContext, connector::Connector, p
                 tasks,
                 @async begin
                     all_nodes = get_destination_nodes(paths)
-                    new_nodes = filter(it -> it ∉ context.fetched_node_ids, all_nodes)
-                    union!(context.fetched_node_ids, new_nodes)
+                    new_nodes = filter(it -> it ∉ context.fetched_targets, all_nodes)
+                    union!(context.fetched_targets, new_nodes)
                     if length(new_nodes) > 0
                         fetch_node_properties(context.profiler, connector, new_nodes, context.target_properties_instructions)
                     end
@@ -472,9 +473,9 @@ function fetch_all_properties(context::ExecutionContext, connector::Connector, p
             push!(
                 tasks,
                 @async begin
-                    all_nodes = get_path_nodes(paths)
-                    new_nodes = filter(it -> it ∉ context.fetched_node_ids, all_nodes)
-                    union!(context.fetched_node_ids, new_nodes)
+                    all_nodes = get_unique_nodes(paths)
+                    new_nodes = filter(it -> it ∉ context.fetched_nodes, all_nodes)
+                    union!(context.fetched_nodes, new_nodes)
                     if length(new_nodes) > 0
                         fetch_node_properties(context.profiler, connector, new_nodes, context.node_properties_instructions)
                     end

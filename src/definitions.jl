@@ -6,7 +6,9 @@ mutable struct ExecutionContext
     include_edges::Bool
     include_nodes::Bool
 
-    fetched_node_ids::Set{Int}
+    fetched_sources::Set{Int}
+    fetched_targets::Set{Int}
+    fetched_nodes::Set{Int}
     fetched_edges::Set{Edge}
 
     source_properties::Vector{String}

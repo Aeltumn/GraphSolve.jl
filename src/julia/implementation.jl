@@ -26,9 +26,7 @@ function fetch_node_properties(profiler::TimerOutput, connector::JuliaConnectorW
     @timeit profiler "copy node properties" begin
         for node in nodes
             for (target, instructions) in path_instructions
-                if !haskey(target, node)
-                    target[node] = connector.node_properties[node]
-                end
+                target[node] = connector.node_properties[node]
             end
         end
     end
@@ -38,9 +36,7 @@ function fetch_edge_properties(profiler::TimerOutput, connector::JuliaConnectorW
     @timeit profiler "copy edge properties" begin
         for edge in edges
             for (target, instructions) in path_instructions
-                if !haskey(target, edge)
-                    target[edge] = connector.edge_properties[edge]
-                end
+                target[edge] = connector.edge_properties[edge]
             end
         end
     end
@@ -71,7 +67,7 @@ end
 function process_path(context::ExecutionContext, sourceNode::Int, targetNode::Int, output::Vector{Path}, collection::Union{Set{Path}, Nothing}, path)
     # Ignore paths of invalid size!
     if length(path) < 2
-        return false
+        return
     end
 
     # Assemble the path from its edges
@@ -144,17 +140,10 @@ function process_path(context::ExecutionContext, sourceNode::Int, targetNode::In
     end
     if new_path ∉ output
         push!(output, new_path)
-        return true
     end
-    return false
 end
 
-function process_paths(context::ExecutionContext, connector::JuliaConnectorWrapper, sourceNode::Int, targetNode::Int, paths, output::Vector{Path}, collection::Union{Set{Path}, Nothing}=nothing)
-    # Ignore if there are no paths!
-    if isempty(paths)
-        return 0
-    end
-
+function process_paths(context::ExecutionContext, connector::JuliaConnectorWrapper, sourceNode::Int, targetNode::Int, output::Vector{Path}, collection::Union{Set{Path}, Nothing}, func)
     # Fetch source/target if requested
     fetch_all_node_properties(context, connector, [sourceNode], [targetNode], nothing)
 
@@ -175,15 +164,20 @@ function process_paths(context::ExecutionContext, connector::JuliaConnectorWrapp
         end
     end
 
-    count = 0
-    @timeit context.profiler "process paths" begin
+    # Fetch the paths only after denying combinations of sources/targets through constraints
+    paths = func()
+
+    # Ignore if there are no paths!
+    if isempty(paths)
+        return 0
+    end
+
+    @timeit context.profiler "process paths" begin    
         for path in paths
-            if process_path(context, sourceNode, targetNode, output, collection, path)
-                count += 1
-            end
+            process_path(context, sourceNode, targetNode, output, collection, path)
         end
     end
-    return count
+    return length(paths)
 end
 
 function get_all_paths(context::ExecutionContext, connector::JuliaConnectorWrapper, source::NodeSelector, target::NodeSelector)
@@ -199,7 +193,7 @@ function get_all_paths(context::ExecutionContext, connector::JuliaConnectorWrapp
                     tasks,
                     @async begin
                         @timeit context.profiler "all simple paths" begin
-                            process_paths(context, connector, s, t, collect(all_simple_paths(connector.graph, s + 1, t + 1)), output)
+                            process_paths(context, connector, s, t, output, nothing, () -> collect(all_simple_paths(connector.graph, s + 1, t + 1)))
                         end
                     end
                 )
@@ -213,7 +207,7 @@ function get_all_paths(context::ExecutionContext, connector::JuliaConnectorWrapp
         for s in sources
             for t in targets
                 @timeit context.profiler "all simple paths" begin
-                    process_paths(context, connector, s, t, collect(all_simple_paths(connector.graph, s + 1, t + 1)), output)
+                    process_paths(context, connector, s, t, output, nothing, () -> collect(all_simple_paths(connector.graph, s + 1, t + 1)))
                 end
             end
         end
@@ -234,9 +228,7 @@ function get_shortest_paths(context::ExecutionContext, connector::JuliaConnector
                     @timeit context.profiler "dijkstra's shortest paths" begin
                         sp = dijkstra_shortest_paths(connector.graph, s + 1)
                         for t in targets
-                            # Mark this as the shortest path search, so don't deny any paths. Otherwise we don't have any eligible
-                            # paths to branch off of when searching.
-                            process_paths(context, connector, s, t, [collect(enumerate_paths(sp, t + 1))], output, collection)
+                            process_paths(context, connector, s, t, output, collection, () -> [collect(enumerate_paths(sp, t + 1))])
                         end
                     end
                 end
@@ -251,7 +243,7 @@ function get_shortest_paths(context::ExecutionContext, connector::JuliaConnector
             @timeit context.profiler "dijkstra's shortest paths" begin
                 sp = dijkstra_shortest_paths(connector.graph, s + 1)
                 for t in targets
-                    process_paths(context, connector, s, t, [collect(enumerate_paths(sp, t + 1))], output, true)
+                    process_paths(context, connector, s, t, output, collection, () -> [collect(enumerate_paths(sp, t + 1))])
                 end
             end
         end
@@ -260,7 +252,6 @@ end
 
 function get_k_shortest_paths(context::ExecutionContext, connector::JuliaConnectorWrapper, source::Int, target::Int, k::Int, output::Vector{Path})
     @timeit context.profiler "yen's k shortest paths" begin
-        paths = yen_k_shortest_paths(connector.graph, source + 1, target + 1, weights(connector.graph), k).paths
-        return process_paths(context, connector, source, target, paths, output)
+        return process_paths(context, connector, source, target, output, nothing, () -> yen_k_shortest_paths(connector.graph, source + 1, target + 1, weights(connector.graph), k).paths)
     end
 end

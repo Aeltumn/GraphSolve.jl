@@ -189,7 +189,7 @@ function execute_path_instruction(backend::GraphBackend, settings::GraphSolveSet
     # Start by creating the execution context
     context = ExecutionContext(
         settings.profiler, settings, instruction, instruction.include_edges, false,
-        Set{Int}(), Set{Edge}(),
+        Set{Int}(), Set{Int}(), Set{Int}(), Set{Edge}(),
         Vector{String}(), Vector{String}(), Vector{String}(), Vector{String}(),
         IdDict{NodePropertyDict, Vector{NodePropertyInstruction}}(), IdDict{NodePropertyDict, Vector{NodePropertyInstruction}}(), IdDict{NodePropertyDict, Vector{NodePropertyInstruction}}(), IdDict{EdgePropertyDict, Vector{EdgePropertyInstruction}}(),
         Vector{PathConstraint}(), Vector{PathConstraint}(), Vector{PathConstraint}(), Vector{PathConstraint}(), Vector{PathConstraint}(), Vector{PathConstraint}(),
@@ -313,6 +313,15 @@ end
 """
 function get_unique_edges(paths)
    return Set(Iterators.flatten(p.edges for p in paths))
+end
+
+"""
+   get_unique_nodes
+   
+   Returns a set of all unique nodes in the given paths list.
+"""
+function get_unique_nodes(paths)
+   return Set(Iterators.flatten(get_path_nodes(p) for p in paths))
 end
 
 """

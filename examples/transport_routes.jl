@@ -24,7 +24,7 @@ function define_graph(backend::GraphBackend, settings::GraphSolveSettings)
     extract_edge_properties!(graph, paths, edge_properties, "weight")
     
     # Ensure every route contains a high value node
-    @apply_path_constraint(graph, paths, any(node -> node["random"] >= 80, nodes))
+    @apply_path_constraint(graph, paths, any(n -> node_properties[n]["random"] >= 80, nodes))
     
     # Define the optimal value of the problem
     @optimal(
@@ -49,7 +49,7 @@ function define_graph(backend::GraphBackend, settings::GraphSolveSettings)
 
         # Set the objective to minimize the total edge weights
         weighted_paths = [(p, sum([edge_properties[e]["weight"] for e in p.edges])) for p in paths]
-        @objective(model, Max, sum(x[p.id] * weight for (p, weight) in weighted_paths))
+        @objective(model, Min, sum(x[p.id] * weight for (p, weight) in weighted_paths))
     end
     define_problem!(graph, paths, path_selection)
 
@@ -57,7 +57,7 @@ function define_graph(backend::GraphBackend, settings::GraphSolveSettings)
         total_weight = isempty(paths) ? 0 : sum(sum([edge_properties[e]["weight"] for e in p.edges]) for p in paths)
         println("Selected $(length(paths)) paths with a total weight of $(total_weight)")
         for path in paths
-            println("  -> $(path.src) to $(path.dst) with weight $(sum([edge_properties[e]["weight"] for e in path.edges]))) through $(path.edges)")
+            println("  -> $(path.src) to $(path.dst) with weight $(sum([edge_properties[e]["weight"] for e in path.edges])) through $(path.edges)")
         end
         return total_weight
     end

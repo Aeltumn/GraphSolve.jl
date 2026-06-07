@@ -81,6 +81,7 @@ export
     get_source_nodes,
     get_destination_nodes,
     get_unique_edges,
+    get_unique_nodes,
     get_path_nodes,
     benchmark!,
     convert_to_cypher,

@@ -30,14 +30,15 @@ function fetch_node_properties(profiler::TimerOutput, connector::CypherConnector
         for (target, instructions) in path_instructions
             if !haskey(target, node)
                 subdict = Dict{String, Any}()
-                for instruction in instructions
-                    value = row_values[idx]
-                    idx += 1
-                    subdict[instruction.name] = value
-                end
                 target[node] = subdict
             else
-                idx += length(instructions)
+                subdict = target[node]
+            end
+            
+            for instruction in instructions
+                value = row_values[idx]
+                idx += 1
+                subdict[instruction.name] = value
             end
         end
     end
@@ -69,14 +70,15 @@ function fetch_edge_properties(profiler::TimerOutput, connector::CypherConnector
         for (target, instructions) in path_instructions
             if !haskey(target, edge)
                 subdict = Dict{String, Any}()
-                for instruction in instructions
-                    value = edge_values[idx]
-                    idx += 1
-                    subdict[instruction.name] = value
-                end
                 target[edge] = subdict
             else
-                idx += length(instructions)
+                subdict = target[edge]
+            end
+            
+            for instruction in instructions
+                value = edge_values[idx]
+                idx += 1
+                subdict[instruction.name] = value
             end
         end
     end
@@ -117,6 +119,8 @@ function perform_node_pre_fetch(context::ExecutionContext, connector::CypherConn
             filter!(source -> evaluate_constraint(constraint, source, nothing, nothing, nothing, nothing, nothing), source_list)
         end
         empty!(context.source_constraints)
+        empty!(context.source_properties)
+        push!(context.source_properties, "s.id")
         empty!(context.source_properties_instructions)
         context.source = IdNodeSelector(source_list)
 
@@ -152,6 +156,8 @@ function perform_node_pre_fetch(context::ExecutionContext, connector::CypherConn
             filter!(target -> evaluate_constraint(constraint, nothing, target, nothing, nothing, nothing, nothing), target_list)
         end
         empty!(context.target_constraints)
+        empty!(context.target_properties)
+        push!(context.target_properties, "t.id")
         empty!(context.target_properties_instructions)
         context.target = IdNodeSelector(target_list)
     end
@@ -195,7 +201,7 @@ function get_all_paths(context::ExecutionContext, connector::CypherConnector, so
         end
 
         for row_values in resp
-            process_output_row(context, context.instruction.output, row_values)
+            process_output_row(context, context.instruction.output, row_values, true, nothing)
         end
     end
 end
@@ -241,9 +247,8 @@ function get_k_shortest_paths(context::ExecutionContext, connector::CypherConnec
             RETURN $(get_merged_properties(context, false))
         """)
         for row_values in resp
-            if process_output_row(context, output, row_values, false)
-                count += 1
-            end
+            count += 1
+            process_output_row(context, output, row_values, false, nothing)
         end
         return count
     end
