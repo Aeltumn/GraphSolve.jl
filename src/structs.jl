@@ -44,10 +44,6 @@ const EdgePropertyDict = Dict{Edge, Dict{String, Any}}
 
     [all_paths_algorithm]
     Defines the database algorithm to use.
-    
-    [embed_properties]
-    Embeds fetching node and edge properties into a single query instead of running a separate
-    request later to fetch the properties.
 
     [use_async_scheduling]
     Enables async scheduling of solving tasks.
@@ -70,7 +66,6 @@ const EdgePropertyDict = Dict{Edge, Dict{String, Any}}
 struct GraphSolveSettings
     mode::SolutionMode
     all_paths_algorithm::AllPathsAlgorithm
-    embed_properties::Bool
     use_async_scheduling::Bool
     preload_nodes::Bool
     apply_path_constraints::Bool
@@ -83,17 +78,16 @@ end
 GraphSolveSettings(
     mode::SolutionMode,
     all_paths_algorithm::AllPathsAlgorithm,
-    embed_properties::Bool,
     use_async_scheduling::Bool,
     preload_nodes::Bool,
     apply_path_constraints::Bool,
     push_down_constraints::Bool,
     re_use_constraint_solutions::Bool,
     solver_type::SolverType
-) = GraphSolveSettings(mode, all_paths_algorithm, embed_properties, use_async_scheduling, preload_nodes, apply_path_constraints, push_down_constraints, re_use_constraint_solutions, solver_type, TimerOutput())
+) = GraphSolveSettings(mode, all_paths_algorithm, use_async_scheduling, preload_nodes, apply_path_constraints, push_down_constraints, re_use_constraint_solutions, solver_type, TimerOutput())
 
 # Define a default variant with all the best options!
-GraphSolveSettings() = GraphSolveSettings(IncrementalPathSearch, Cypher, true, true, true, true, true, true, SCIPSolver, TimerOutput())
+GraphSolveSettings() = GraphSolveSettings(IncrementalPathSearch, Cypher, true, true, true, true, true, SCIPSolver, TimerOutput())
 
 """
     PathConstraint

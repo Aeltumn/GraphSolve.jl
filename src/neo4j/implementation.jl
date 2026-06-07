@@ -114,9 +114,10 @@ function perform_node_pre_fetch(context::ExecutionContext, connector::CypherConn
             process_properties(context, context.source_properties_instructions, nothing, sourceNode, nothing, 2, row_values)
         end
         for constraint in context.source_constraints
-            filter!(source -> evaluate_constraint(constraint, source, nothing, nothing), source_list)
+            filter!(source -> evaluate_constraint(constraint, source, nothing, nothing, nothing, nothing, nothing), source_list)
         end
         empty!(context.source_constraints)
+        empty!(context.source_properties_instructions)
         context.source = IdNodeSelector(source_list)
 
         target_conditions = Vector{String}()
@@ -148,9 +149,10 @@ function perform_node_pre_fetch(context::ExecutionContext, connector::CypherConn
             process_properties(context, nothing, context.target_properties_instructions, nothing, targetNode, 2, row_values)
         end
         for constraint in context.target_constraints
-            filter!(target -> evaluate_constraint(constraint, nothing, target, nothing), target_list)
+            filter!(target -> evaluate_constraint(constraint, nothing, target, nothing, nothing, nothing, nothing), target_list)
         end
         empty!(context.target_constraints)
+        empty!(context.target_properties_instructions)
         context.target = IdNodeSelector(target_list)
     end
 end
@@ -169,7 +171,6 @@ function get_all_paths(context::ExecutionContext, connector::CypherConnector, so
             if !isnothing(to.conditions)
                 append!(pre_conditions, to.conditions)
             end
-            append!(pre_conditions, context.query_conditions)
 
             resp = query_cypher(context.profiler, connector, """
                 MATCH p = $(from.select)-[*]->$(to.select)
@@ -187,7 +188,6 @@ function get_all_paths(context::ExecutionContext, connector::CypherConnector, so
                 YIELD path
                 WITH path as p, nodes(path) AS elements
                 WITH p, elements[0] as s, elements[-1] as t
-                $(merge_conditions(context.query_conditions))
                 RETURN $(get_merged_properties(context))
             """)
         else
@@ -200,7 +200,7 @@ function get_all_paths(context::ExecutionContext, connector::CypherConnector, so
     end
 end
 
-function get_shortest_paths(context::ExecutionContext, connector::CypherConnector, source::NodeSelector, target::NodeSelector, output::Vector{Path})
+function get_shortest_paths(context::ExecutionContext, connector::CypherConnector, source::NodeSelector, target::NodeSelector, output::Vector{Path}, collection::Set{Path})
     @timeit context.profiler "get shortest paths" begin
         resp = query_cypher(context.profiler, connector, """
             $(as_query_variable(target, "target"))
@@ -218,7 +218,7 @@ function get_shortest_paths(context::ExecutionContext, connector::CypherConnecto
         for row_values in resp
             # Mark this as the shortest path search, so don't deny any paths from edge constraints outside the database.
             # Otherwise we don't have any eligible pairs for incremental searching.
-            process_output_row(context, output, row_values, true, true)
+            process_output_row(context, output, row_values, true, collection)
         end
     end
 end

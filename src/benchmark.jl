@@ -48,7 +48,7 @@ function benchmark!(iter, graphs)
                     end
                     
                     # Stringify the settings nicely for readability
-                    stringified_settings = "[mode = $(settings.mode), all_paths_algorithm = $(settings.all_paths_algorithm), embed_properties = $(settings.embed_properties), use_async_scheduling = $(settings.use_async_scheduling), preload_nodes = $(settings.preload_nodes), apply_path_constraints = $(settings.apply_path_constraints), push_down_constraints = $(settings.push_down_constraints), re_use_constraint_solutions = $(settings.re_use_constraint_solutions), solver_type = $(settings.solver_type)]"
+                    stringified_settings = "[mode = $(settings.mode), all_paths_algorithm = $(settings.all_paths_algorithm), use_async_scheduling = $(settings.use_async_scheduling), preload_nodes = $(settings.preload_nodes), apply_path_constraints = $(settings.apply_path_constraints), push_down_constraints = $(settings.push_down_constraints), re_use_constraint_solutions = $(settings.re_use_constraint_solutions), solver_type = $(settings.solver_type)]"
 
                     times = []
                     results = []

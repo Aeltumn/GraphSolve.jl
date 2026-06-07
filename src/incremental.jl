@@ -84,19 +84,19 @@ end
     and constraint solving until it finds a feasible solution to the problems.
 """
 function incremental_path_search(context::ExecutionContext, connector::Connector, problem_instruction::ProblemInstruction)
-    # Step 1: Find shortest paths once to determine all feasible pairs
+    # Step 1: Find shortest paths once to determine all feasible pairs, separate the feasible source/targets from
+    # the feasible paths.
+    collection = Set{Path}()
     candidate_paths = Vector{Path}()
-    get_shortest_paths(context, connector, context.source, context.target, candidate_paths)
+    get_shortest_paths(context, connector, context.source, context.target, candidate_paths, collection)
 
     # Step 1b: Fetch properties for newly added nodes & edges
-    if !context.settings.embed_properties
-        fetch_all_properties(context, connector, candidate_paths)
-    end
+    fetch_all_properties(context, connector, collection)
 
     # Step 2: Determine the optimal value to strive for
     @timeit context.profiler "determine optimal value" begin
-        sources = get_source_nodes(candidate_paths)
-        destinations = get_destination_nodes(candidate_paths)
+        sources = get_source_nodes(collection)
+        destinations = get_destination_nodes(collection)
         optimal_score = context.instruction.optimal.compiled(sources, destinations)
     end
 
@@ -110,7 +110,7 @@ function incremental_path_search(context::ExecutionContext, connector::Connector
     # Step 4: Determine all feasible (source, destination) pairs and create holding
     # objects for each of them which we can later test.
     @timeit context.profiler "prepare path options" begin
-        for path in candidate_paths
+        for path in collection
             pair = (path.src, path.dst)
             if !haskey(options, pair)
                 options[pair] = PathOption(path.src, path.dst, 0)

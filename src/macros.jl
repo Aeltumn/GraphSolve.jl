@@ -91,7 +91,7 @@ end
     @apply_path_constraint
 
     Defines a new constraint on the given path variable.
-    Use variables `src`, `dst` and `edge` to reference path elements.
+    Use variables `src`, `dst`, `node`, `nodes`, `edge`, or `edges` to reference path elements.
 """
 macro apply_path_constraint(graph, paths, constraint)
     esc(quote
@@ -103,7 +103,7 @@ macro apply_path_constraint(graph, paths, constraint)
             error("Could not find the instruction for the paths variable, is it from this graph?")
         end
         local expr = $(QuoteNode(constraint))
-        local compiled = (src, dst, edge) -> begin
+        local compiled = (src, dst, node, nodes, edge, edges) -> begin
             $constraint
         end
         push!(instructions[id].constraints, PathConstraint(get_symbols_in(expr), compiled, convert_to_cypher(expr)))
@@ -186,26 +186,19 @@ function execute_path_instruction(backend::GraphBackend, settings::GraphSolveSet
         backend.connector = connector
     end
 
-    # Assert that we aren't combining Julia & constraint push-down!
-    if connector isa JuliaConnectorWrapper
-        real_settings = @set settings.push_down_constraints = false
-    else
-        real_settings = settings
-    end
-
     # Start by creating the execution context
     context = ExecutionContext(
-        settings.profiler, real_settings, instruction, instruction.include_edges,
+        settings.profiler, settings, instruction, instruction.include_edges, false,
         Set{Int}(), Set{Edge}(),
-        Vector{String}(), Vector{String}(), Vector{String}(),
-        IdDict{NodePropertyDict, Vector{NodePropertyInstruction}}(), IdDict{NodePropertyDict, Vector{NodePropertyInstruction}}(), IdDict{EdgePropertyDict, Vector{EdgePropertyInstruction}}(),
-        Vector{PathConstraint}(), Vector{PathConstraint}(), Vector{PathConstraint}(), Vector{PathConstraint}(), Vector{String}(),
+        Vector{String}(), Vector{String}(), Vector{String}(), Vector{String}(),
+        IdDict{NodePropertyDict, Vector{NodePropertyInstruction}}(), IdDict{NodePropertyDict, Vector{NodePropertyInstruction}}(), IdDict{NodePropertyDict, Vector{NodePropertyInstruction}}(), IdDict{EdgePropertyDict, Vector{EdgePropertyInstruction}}(),
+        Vector{PathConstraint}(), Vector{PathConstraint}(), Vector{PathConstraint}(), Vector{PathConstraint}(), Vector{PathConstraint}(), Vector{PathConstraint}(),
         instruction.source, instruction.target
     )
 
     # Start by filtering instructions into execution instructions
     prepare_query_properties(context, property_instructions)
-    if settings.embed_properties && settings.apply_path_constraints
+    if settings.apply_path_constraints
         prepare_constraints(context)
     end
 
@@ -220,9 +213,7 @@ function execute_path_instruction(backend::GraphBackend, settings::GraphSolveSet
         get_all_paths(context, connector, context.source, context.target)
 
         # Fetch remaining properties
-        if !settings.embed_properties
-            fetch_all_properties(context, connector, context.instruction.output)
-        end
+        fetch_all_properties(context, connector, context.instruction.output)
         
         for problem_instruction in problem_instructions
             # Run the constraint solver

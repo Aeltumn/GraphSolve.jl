@@ -54,10 +54,10 @@ function define_graph(backend::GraphBackend, settings::GraphSolveSettings)
     define_problem!(graph, paths, path_selection)
 
     function print_path_results(graph)
-        total_weight = isempty(paths) ? 0 : sum(node_properties[p.src]["weight"] for p in paths)
+        total_weight = isempty(paths) ? 0 : sum(sum([edge_properties[e]["weight"] for e in p.edges]) for p in paths)
         println("Selected $(length(paths)) paths with a total weight of $(total_weight)")
         for path in paths
-            println("  -> $(path.src) to $(path.dst) with weight $(node_properties[path.src]["weight"]) through $(path.edges) which have $(join([edge_properties[e]["max"] for e in path.edges], ", "))")
+            println("  -> $(path.src) to $(path.dst) with weight $(sum([edge_properties[e]["weight"] for e in path.edges]))) through $(path.edges)")
         end
         return total_weight
     end
@@ -69,6 +69,6 @@ benchmark!(
     3,
     [
         define_graph(Neo4jBackend("http://localhost:7474", "neo4j", ENV["NEO4J_PASSWORD"], "manual", false), GraphSolveSettings()),
-        define_graph(Neo4jBackend("http://localhost:7474", "neo4j", ENV["NEO4J_PASSWORD"], "s1000", false), GraphSolveSettings())
+        define_graph(Neo4jBackend("http://localhost:7474", "neo4j", ENV["NEO4J_PASSWORD"], "s100", false), GraphSolveSettings())
     ],
 )

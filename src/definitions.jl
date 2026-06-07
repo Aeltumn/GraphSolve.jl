@@ -4,23 +4,27 @@ mutable struct ExecutionContext
     settings::GraphSolveSettings
     instruction::PathInstruction
     include_edges::Bool
+    include_nodes::Bool
 
     fetched_node_ids::Set{Int}
     fetched_edges::Set{Edge}
 
     source_properties::Vector{String}
     target_properties::Vector{String}
+    node_properties::Vector{String}
     edge_properties::Vector{String}
 
     source_properties_instructions::IdDict{NodePropertyDict, Vector{NodePropertyInstruction}}
     target_properties_instructions::IdDict{NodePropertyDict, Vector{NodePropertyInstruction}}
+    node_properties_instructions::IdDict{NodePropertyDict, Vector{NodePropertyInstruction}}
     edge_properties_instructions::IdDict{EdgePropertyDict, Vector{EdgePropertyInstruction}}
 
     source_constraints::Vector{PathConstraint}
     target_constraints::Vector{PathConstraint}
+    source_target_constraints::Vector{PathConstraint}
+    node_constraints::Vector{PathConstraint}
     edge_constraints::Vector{PathConstraint}
-    non_edge_constraints::Vector{PathConstraint}
-    query_conditions::Vector{String}
+    path_constraints::Vector{PathConstraint}
 
     source::NodeSelector
     target::NodeSelector
@@ -76,7 +80,7 @@ end
 
     Executes a query to fetch the shortest paths between the given sources and targets.
 """
-function get_shortest_paths(context::ExecutionContext, connector::Connector, source::NodeSelector, target::NodeSelector, output::Vector{Path})
+function get_shortest_paths(context::ExecutionContext, connector::Connector, source::NodeSelector, target::NodeSelector, output::Vector{Path}, collection::Set{Path})
     error("Backend not fully implemented")
 end
 

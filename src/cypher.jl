@@ -163,6 +163,6 @@ end
 
     Evaluates if a path constraint holds for a path, based on the given source, destination and edge ids.
 """
-function evaluate_constraint(constraint::PathConstraint, source::Int, destination::Int, edge)
-    return constraint.constraint(source, destination, edge)
+function evaluate_constraint(constraint::PathConstraint, src, dst, node, nodes, edge, edges)
+    return constraint.constraint(src, dst, node, nodes, edge, edges)
 end

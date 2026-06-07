@@ -18,6 +18,9 @@ function get_merged_properties(context::ExecutionContext, supports_edge_properti
         parameters[idx] = context.target_properties[i]
         idx += 1
     end
+    if !isempty(context.node_properties)
+        push!(parameters, "[n IN nodes(p) | [$(join(context.node_properties, ", "))]]")
+    end
     if !isempty(context.edge_properties)
         push!(parameters, supports_edge_properties ? "[e IN relationships(p) | [$(join(context.edge_properties, ", "))]]" : "[e IN relationships(p) | [startNode(e).id, endNode(e).id]]")
     end
@@ -88,7 +91,7 @@ end
 
     Processes one output row from a query with all properties baked in.
 """
-function process_output_row(context::ExecutionContext, target::Vector{Path}, row_values, supports_edge_properties::Bool=true, is_shortest_path_search::Bool=false)
+function process_output_row(context::ExecutionContext, target::Vector{Path}, row_values, supports_edge_properties::Bool=true, collection::Union{Set{Path}, Nothing}=nothing)
     # Extract the node ids
     sourceNode = row_values[1]
     targetNode = row_values[2]
@@ -106,20 +109,62 @@ function process_output_row(context::ExecutionContext, target::Vector{Path}, row
     )
 
     # Filter based on non-edge constraints after we've extracted properties
-    if !context.settings.push_down_constraints
-        for constraint in context.source_constraints
-            if !evaluate_constraint(constraint, sourceNode, nothing, nothing)
-                return false
-            end
+    for constraint in context.source_constraints
+        if !evaluate_constraint(constraint, sourceNode, nothing, nothing, nothing, nothing, nothing)
+            return false
         end
-        for constraint in context.target_constraints
-            if !evaluate_constraint(constraint, nothing, targetNode, nothing)
-                return false
-            end
+    end
+    for constraint in context.target_constraints
+        if !evaluate_constraint(constraint, nothing, targetNode, nothing, nothing, nothing, nothing)
+            return false
         end
-        for constraint in context.non_edge_constraints
-            if !evaluate_constraint(constraint, sourceNode, targetNode, nothing)
-                return false
+    end
+    for constraint in context.source_target_constraints
+        if !evaluate_constraint(constraint, sourceNode, targetNode, nothing, nothing, nothing, nothing)
+            return false
+        end
+    end
+
+    valid = true
+    @timeit context.profiler "parse query nodes" begin
+        # Parse the node properties if we included them
+        if context.include_nodes
+            path_nodes = row_values[3 + length(context.source_properties_instructions) + length(context.target_properties_instructions)]
+            for node_values in path_nodes
+                println("Got node $(node_values)")
+                node = node_values[1]
+                idx = 2
+                if !isnothing(context.node_properties_instructions) && !isempty(context.node_properties_instructions)
+                    @timeit context.profiler "parse node properties" begin
+                        for (target, instructions) in context.node_properties_instructions
+                            if !haskey(target, node)
+                                subdict = Dict{String, Any}()
+                                for instruction in instructions
+                                    value = row_values[idx]
+                                    idx += 1
+                                    subdict[instruction.name] = value
+                                end
+                                target[node] = subdict
+                            else
+                                idx += length(instructions)
+                            end
+                        end
+                        
+                        # Avoid doubling up on fetching node properties!
+                        push!(context.fetched_node_ids, node)
+                    end
+                end
+
+                # Reject path based on edge constraints after resolving edge variables
+                for constraint in context.node_constraints
+                    if !evaluate_constraint(constraint, sourceNode, targetNode, node, nothing, nothing, nothing)
+                        if isnothing(collection)
+                            return
+                        else
+                            valid = false
+                        end
+                    end
+                end
             end
         end
     end
@@ -127,42 +172,46 @@ function process_output_row(context::ExecutionContext, target::Vector{Path}, row
     @timeit context.profiler "parse query edges" begin
         # Parse the edge properties if we included them
         if context.include_edges
-            path_edges = row_values[3 + length(context.source_properties_instructions) + length(context.target_properties_instructions)]
+            path_edges = row_values[3 + length(context.source_properties_instructions) + length(context.target_properties_instructions) + (context.include_nodes ? 1 : 0)]
             edges = Vector{Edge}(undef, length(path_edges))
             edge_nr = 1
             for edge_values in path_edges
                 # The node id is the first entry in the list
                 edge = (edge_values[1], edge_values[2])
                 
-                # Read out properties on this edge if we didn't
-                # already previously fetch this edge
-                if supports_edge_properties && !isempty(context.edge_properties_instructions)
-                    @timeit context.profiler "parse edge properties" begin
-                        idx = 3
-                        for (target, instructions) in context.edge_properties_instructions
-                            if !haskey(target, edge)
-                                subdict = Dict{String, Any}()
-                                for instruction in instructions
-                                    value = edge_values[idx]
-                                    idx += 1
-                                    subdict[instruction.name] = value
+                if supports_edge_properties
+                    # Read out properties on this edge if we didn't
+                    # already previously fetch this edge
+                    if !isempty(context.edge_properties_instructions)
+                        @timeit context.profiler "parse edge properties" begin
+                            idx = 3
+                            for (target, instructions) in context.edge_properties_instructions
+                                if !haskey(target, edge)
+                                    subdict = Dict{String, Any}()
+                                    for instruction in instructions
+                                        value = edge_values[idx]
+                                        idx += 1
+                                        subdict[instruction.name] = value
+                                    end
+                                    target[edge] = subdict
+                                else
+                                    idx += length(instructions)
                                 end
-                                target[edge] = subdict
-                            else
-                                idx += length(instructions)
                             end
+                            
+                            # Track which edges have been fetched already so we don't double up!
+                            push!(context.fetched_edges, edge)
                         end
-                        
-                        # Track which edges have been fetched already so we don't double up!
-                        push!(context.fetched_edges, edge)
                     end
-                end
 
-                # Reject path based on edge constraints after resolving edge variables
-                if supports_edge_properties && !context.settings.push_down_constraints && !is_shortest_path_search
+                    # Reject path based on edge constraints after resolving edge variables
                     for constraint in context.edge_constraints
-                        if !evaluate_constraint(constraint, sourceNode, targetNode, edge)
-                            return false
+                        if !evaluate_constraint(constraint, sourceNode, targetNode, nothing, nothing, edge, nothing)
+                            if isnothing(collection)
+                                return
+                            else
+                                valid = false
+                            end
                         end
                     end
                 end
@@ -173,9 +222,29 @@ function process_output_row(context::ExecutionContext, target::Vector{Path}, row
             end
         end
     end
+
+    # Deny path based on constraints on the entire path
+    new_path = Path(0, sourceNode, targetNode, edges)
+    if !isempty(context.path_constraints)
+        path_nodes = get_path_nodes(new_path)
+        for constraint in context.path_constraints
+            if !evaluate_constraint(constraint, sourceNode, targetNode, nothing, path_nodes, nothing, edges)
+                if isnothing(collection)
+                    return
+                else
+                    valid = false
+                end
+            end
+        end
+    end
     
     # Insert the path now that we have read its data (avoiding duplicates)
-    new_path = Path(0, sourceNode, targetNode, edges)
+    if !isnothing(collection)
+        push!(collection, new_path)
+        if !valid
+            return
+        end
+    end
     if new_path ∉ target
         push!(target, new_path)
         return true
@@ -206,6 +275,13 @@ function prepare_query_properties(context::ExecutionContext, property_instructio
                     push!(context.target_properties, "t.$(instruction.name)")
                     sublist = get!(context.target_properties_instructions, instruction.target, Vector{NodePropertyInstruction}())
                     push!(sublist, instruction)
+                elseif instruction.component == Edges
+                    # If we want node properties we have to add node parsing!
+                    context.include_nodes = true
+
+                    push!(context.node_properties, "n.$(instruction.name)")
+                    sublist = get!(context.node_properties_instructions, instruction.target, Vector{NodePropertyInstruction}())
+                    push!(sublist, instruction)
                 end
             elseif instruction isa EdgePropertyInstruction
                 # If we want edge properties we want to extract the path if possible!
@@ -216,6 +292,11 @@ function prepare_query_properties(context::ExecutionContext, property_instructio
                 sublist = get!(context.edge_properties_instructions, instruction.target, Vector{EdgePropertyInstruction}())
                 push!(sublist, instruction)
             end
+        end
+
+        # Determine if we need to include node information
+        if context.include_nodes
+            pushfirst!(context.node_properties, "n.id")
         end
 
         # Determine if we need to include edge information
@@ -237,27 +318,113 @@ function prepare_constraints(context::ExecutionContext)
     @timeit context.profiler "constraint filtering" begin
         # Filter the lists using any source and destination only constraints
         for constraint in context.instruction.constraints
-            has_edge = :edge in constraint.symbols
             has_src = :src in constraint.symbols
             has_dst = :dst in constraint.symbols
+            has_edge = :edge in constraint.symbols
+            has_edges = :edges in constraint.symbols
+            has_node = :node in constraint.symbols
+            has_nodes = :nodes in constraint.symbols
             
-            # Categorise all constraint types
-            if !has_edge && !has_src && !has_dst
+            # If none of the correct values are used, ignore this constraint!
+            if !has_src && !has_dst && !has_edge && !has_edges && !has_node && !has_nodes
                 continue
+            end
+            
+            # Sort constraints into the right buckets
+            if has_edges || has_nodes
+                if has_edge || has_node
+                    error("Cannot have both constraints on individual components and the whole path")
+                end
+                push!(context.path_constraints, constraint)
             elseif has_edge
-                if context.settings.push_down_constraints && !isnothing(constraint.cypher)
-                    push!(context.query_conditions, constraint.cypher)
+                if has_node
+                    error("Cannot have both constraints on edge and node components")
                 end
                 push!(context.edge_constraints, constraint)
-            elseif has_src && has_dst
-                if context.settings.push_down_constraints && !isnothing(constraint.cypher)
-                    push!(context.query_conditions, constraint.cypher)
-                end
-                push!(context.non_edge_constraints, constraint)
+            elseif has_node
+                push!(context.node_constraints, constraint)
+            elseif has_src || has_dst
+                push!(context.source_target_constraints, constraint)
             elseif has_src
                 push!(context.source_constraints, constraint)
             else
                 push!(context.target_constraints, constraint)
+            end
+        end
+    end
+end
+
+"""
+    fetch_all_node_properties
+
+    Fetches all properties for the given nodes if unfetched.
+"""
+function fetch_all_node_properties(context::ExecutionContext, connector::Connector, sources::Union{Vector{Int}, Nothing}, targets::Union{Vector{Int}, Nothing}, nodes::Union{Vector{Int}, Nothing})
+    @timeit context.profiler "fetch all node properties" begin
+        # If requested, run separate simultaneous queries to determine properties without
+        # duplicate data as we fetch a lot of paths
+        tasks = Vector{Task}()
+        if length(sources) > 0 && length(context.source_properties_instructions) > 0
+            push!(
+                tasks,
+                @async begin
+                    new_nodes = filter(it -> it ∉ context.fetched_node_ids, sources)
+                    union!(context.fetched_node_ids, new_nodes)
+                    if length(new_nodes) > 0
+                        fetch_node_properties(context.profiler, connector, new_nodes, context.source_properties_instructions)
+                    end
+                end
+            )
+        end
+        if length(targets) > 0 && length(context.target_properties_instructions) > 0
+            push!(
+                tasks,
+                @async begin
+                    new_nodes = filter(it -> it ∉ context.fetched_node_ids, targets)
+                    union!(context.fetched_node_ids, new_nodes)
+                    if length(new_nodes) > 0
+                        fetch_node_properties(context.profiler, connector, new_nodes, context.target_properties_instructions)
+                    end
+                end
+            )
+        end
+        if length(nodes) > 0 && length(context.node_properties_instructions) > 0
+            push!(
+                tasks,
+                @async begin
+                    new_nodes = filter(it -> it ∉ context.fetched_node_ids, nodes)
+                    union!(context.fetched_node_ids, new_nodes)
+                    if length(new_nodes) > 0
+                        fetch_node_properties(context.profiler, connector, new_nodes, context.node_properties_instructions)
+                    end
+                end
+            )
+        end
+
+        # Early exit if no tasks were scheduled
+        if isempty(tasks)
+            return
+        end
+        
+        # Wait for all queries to complete
+        for task in tasks
+            wait(task)
+        end
+    end
+end
+
+"""
+    fetch_all_edge_properties
+
+    Fetches all properties for the given edges if unfetched.
+"""
+function fetch_all_node_properties(context::ExecutionContext, connector::Connector, edges::Vector{Edge})
+    @timeit context.profiler "fetch all edge properties" begin
+        if length(edges) > 0 && length(context.edge_properties_instructions) > 0
+            new_edges = filter(it -> it ∉ context.fetched_edges, edges)
+            union!(context.fetched_edges, new_edges)
+            if length(new_edges) > 0
+                fetch_edge_properties(context.profiler, connector, new_edges, context.edge_properties_instructions)
             end
         end
     end
@@ -270,7 +437,7 @@ end
     runs once per node or edge and can be safely re-called to fetch
     for all newly added nodes/edges.
 """
-function fetch_all_properties(context::ExecutionContext, connector::Connector, paths::Vector{Path})
+function fetch_all_properties(context::ExecutionContext, connector::Connector, paths)
     @timeit context.profiler "fetch all properties" begin
         # If requested, run separate simultaneous queries to determine properties without
         # duplicate data as we fetch a lot of paths
@@ -301,6 +468,19 @@ function fetch_all_properties(context::ExecutionContext, connector::Connector, p
                 end
             )
         end
+        if length(context.node_properties_instructions) > 0
+            push!(
+                tasks,
+                @async begin
+                    all_nodes = get_path_nodes(paths)
+                    new_nodes = filter(it -> it ∉ context.fetched_node_ids, all_nodes)
+                    union!(context.fetched_node_ids, new_nodes)
+                    if length(new_nodes) > 0
+                        fetch_node_properties(context.profiler, connector, new_nodes, context.node_properties_instructions)
+                    end
+                end
+            )
+        end
         if length(context.edge_properties_instructions) > 0
             push!(
                 tasks,
@@ -313,6 +493,11 @@ function fetch_all_properties(context::ExecutionContext, connector::Connector, p
                     end
                 end
             )
+        end
+
+        # Early exit if no tasks were scheduled
+        if isempty(tasks)
+            return
         end
         
         # Wait for all queries to complete

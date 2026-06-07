@@ -50,106 +50,135 @@ function perform_node_pre_fetch(context::ExecutionContext, connector::JuliaConne
     @timeit context.profiler "pre-filter sources" begin
         source_list = filter_nodes(connector, context.source)
         for constraint in context.source_constraints
-            filter!(source -> evaluate_constraint(constraint, source, nothing, nothing), source_list)
+            filter!(source -> evaluate_constraint(constraint, source, nothing, nothing, nothing, nothing, nothing), source_list)
         end
         empty!(context.source_constraints)
         context.source = IdNodeSelector(source_list)
-
-        if context.settings.embed_properties
-            fetch_node_properties(context.profiler, connector, source_list, context.source_properties_instructions)
-        end
+        fetch_all_node_properties(context, connector, source_list, nothing, nothing)
     end
     
     @timeit context.profiler "pre-filter targets" begin
         target_list = filter_nodes(connector, context.target)
         for constraint in context.target_constraints
-            filter!(target -> evaluate_constraint(constraint, nothing, target, nothing), target_list)
+            filter!(target -> evaluate_constraint(constraint, nothing, target, nothing, nothing, nothing, nothing), target_list)
         end
         empty!(context.target_constraints)
         context.target = IdNodeSelector(target_list)
-
-        if context.settings.embed_properties
-            fetch_node_properties(context.profiler, connector, target_list, context.target_properties_instructions)
-        end
+        fetch_all_node_properties(context, connector, nothing, target_list, nothing)
     end
 end
 
-function process_paths(context::ExecutionContext, connector::JuliaConnectorWrapper, sourceNode::Int, targetNode::Int, paths, output::Vector{Path}, is_shortest_path_search::Bool=false)
+function process_path(context::ExecutionContext, sourceNode::Int, targetNode::Int, output::Vector{Path}, collection::Union{Set{Path}, Nothing}, path)
+    # Ignore paths of invalid size!
+    if length(path) < 2
+        return false
+    end
+
+    # Assemble the path from its edges
+    edges = Vector{Edge}(undef, length(path) - 1)
+    edge_nr = 1
+    last_edge = nothing
+    valid = true
+    for vertex in path
+        # Reject path based on node constraints after resolving node variables
+        if !isempty(context.node_constraints)
+            fetch_all_node_properties(context, connector, nothing, nothing, [vertex])
+            for constraint in context.node_constraints
+                if !evaluate_constraint(constraint, sourceNode, targetNode, vertex, nothing, nothing, nothing)
+                    if isnothing(collection)
+                        return
+                    else
+                        valid = false
+                    end
+                end
+            end
+        end
+
+        if isnothing(last_edge)
+            last_edge = vertex
+        else
+            edge = (last_edge - 1, vertex - 1)
+            last_edge = vertex
+
+            # Reject path based on edge constraints after resolving edge variables
+            if !isempty(context.edge_constraints)
+                fetch_all_edge_properties(context, connector, [edge])
+                for constraint in context.edge_constraints
+                    if !evaluate_constraint(constraint, sourceNode, targetNode, nothing, nothing, edge, nothing)
+                        if isnothing(collection)
+                            return
+                        else
+                            valid = false
+                        end
+                    end
+                end
+            end
+
+            # Add the edge to the path
+            edges[edge_nr] = edge
+            edge_nr += 1
+        end
+    end
+
+    # Deny path based on constraints on the entire path
+    new_path = Path(0, sourceNode, targetNode, edges)
+    if !isempty(context.path_constraints)
+        path_nodes = get_path_nodes(new_path)
+        for constraint in context.path_constraints
+            if !evaluate_constraint(constraint, sourceNode, targetNode, nothing, path_nodes, nothing, edges)
+                if isnothing(collection)
+                    return
+                else
+                    valid = false
+                end
+            end
+        end
+    end
+    
+    # Insert the path now that we have read its data (avoiding duplicates)
+    if !isnothing(collection)
+        push!(collection, new_path)
+        if !valid
+            return
+        end
+    end
+    if new_path ∉ output
+        push!(output, new_path)
+        return true
+    end
+    return false
+end
+
+function process_paths(context::ExecutionContext, connector::JuliaConnectorWrapper, sourceNode::Int, targetNode::Int, paths, output::Vector{Path}, collection::Union{Set{Path}, Nothing}=nothing)
     # Ignore if there are no paths!
     if isempty(paths)
         return 0
     end
 
-    # Fetch properties if requested
-    if !isempty(context.source_properties_instructions)
-        fetch_node_properties(context.profiler, connector, Set{Int}([sourceNode]), context.source_properties_instructions)
-    end
-    if !isempty(context.target_properties_instructions)
-        fetch_node_properties(context.profiler, connector, Set{Int}([targetNode]), context.target_properties_instructions)
-    end
+    # Fetch source/target if requested
+    fetch_all_node_properties(context, connector, [sourceNode], [targetNode], nothing)
 
     # Filter based on non-edge constraints after we've extracted properties
-    if !context.settings.push_down_constraints
-        for constraint in context.source_constraints
-            if !evaluate_constraint(constraint, sourceNode, nothing, nothing)
-                return 0
-            end
+    for constraint in context.source_constraints
+        if !evaluate_constraint(constraint, sourceNode, nothing, nothing, nothing, nothing, nothing)
+            return 0
         end
-        for constraint in context.target_constraints
-            if !evaluate_constraint(constraint, nothing, targetNode, nothing)
-                return 0
-            end
+    end
+    for constraint in context.target_constraints
+        if !evaluate_constraint(constraint, nothing, targetNode, nothing, nothing, nothing, nothing)
+            return 0
         end
-        for constraint in context.non_edge_constraints
-            if !evaluate_constraint(constraint, sourceNode, targetNode, nothing)
-                return 0
-            end
+    end
+    for constraint in context.source_target_constraints
+        if !evaluate_constraint(constraint, sourceNode, targetNode, nothing, nothing, nothing, nothing)
+            return 0
         end
     end
 
     count = 0
     @timeit context.profiler "process paths" begin
         for path in paths
-            # Ignore paths of invalid size!
-            if length(path) < 2
-                continue
-            end
-
-            # Assemble the path from its edges
-            edges = Vector{Edge}(undef, length(path) - 1)
-            edge_nr = 1
-            last_edge = nothing
-            for vertex in path
-                if isnothing(last_edge)
-                    last_edge = vertex
-                else
-                    edge = (last_edge - 1, vertex - 1)
-                    last_edge = vertex
-
-                    # Fetch edge properties if applicable
-                    if !isempty(context.edge_properties_instructions)
-                        fetch_edge_properties(context.profiler, connector, Set{Edge}([edge]), context.edge_properties_instructions)
-                    end
-
-                    # Reject path based on edge constraints after resolving edge variables
-                    if !context.settings.push_down_constraints && !is_shortest_path_search
-                        for constraint in context.edge_constraints
-                            if !evaluate_constraint(constraint, sourceNode, targetNode, edge)
-                                return count
-                            end
-                        end
-                    end
-
-                    # Add the edge to the path
-                    edges[edge_nr] = edge
-                    edge_nr += 1
-                end
-            end
-            
-            # Insert the path now that we have read its data (avoiding duplicates)
-            new_path = Path(0, sourceNode, targetNode, edges)
-            if new_path ∉ output
-                push!(output, new_path)
+            if process_path(context, sourceNode, targetNode, output, collection, path)
                 count += 1
             end
         end
@@ -191,7 +220,7 @@ function get_all_paths(context::ExecutionContext, connector::JuliaConnectorWrapp
     end
 end
 
-function get_shortest_paths(context::ExecutionContext, connector::JuliaConnectorWrapper, source::NodeSelector, target::NodeSelector, output::Vector{Path})
+function get_shortest_paths(context::ExecutionContext, connector::JuliaConnectorWrapper, source::NodeSelector, target::NodeSelector, output::Vector{Path}, collection::Set{Path})
     sources = filter_nodes(connector, source)
     targets = filter_nodes(connector, target)
 
@@ -207,7 +236,7 @@ function get_shortest_paths(context::ExecutionContext, connector::JuliaConnector
                         for t in targets
                             # Mark this as the shortest path search, so don't deny any paths. Otherwise we don't have any eligible
                             # paths to branch off of when searching.
-                            process_paths(context, connector, s, t, [collect(enumerate_paths(sp, t + 1))], output, true)
+                            process_paths(context, connector, s, t, [collect(enumerate_paths(sp, t + 1))], output, collection)
                         end
                     end
                 end

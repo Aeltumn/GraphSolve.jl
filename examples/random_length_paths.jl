@@ -43,7 +43,7 @@ function define_graph(backend::GraphBackend, settings::GraphSolveSettings)
         # Ensure every path has the same random sum
         for path in paths
             path_sum = sum([node_properties[n]["random"] for n in get_path_nodes(path)])
-            @constraint(model, x[p.id] < 0.5 || path_sum == sum)
+            @constraint(model, x[p.id] * (path_sum - sum) == 0)
         end
 
         # Set the objective, to maximize weight of selected paths!
@@ -53,7 +53,7 @@ function define_graph(backend::GraphBackend, settings::GraphSolveSettings)
 
     function print_path_results(graph)
         total_weight = isempty(paths) ? 0 : sum(node_properties[p.src]["weight"] for p in paths)
-        println("Selected $(length(paths)) paths with a total weight of $(total_weight)")
+        println("Selected $(length(paths)) paths with a total weight of $(total_weight) and a random of $(isempty(paths) ? 0 : node_properties[paths[1].edges[1][1]]["random"])")
         for path in paths
             println("  -> $(path.src) to $(path.dst) with weight $(node_properties[path.src]["weight"]) through $(path.edges) which have $(join([edge_properties[e]["max"] for e in path.edges], ", "))")
         end
@@ -67,6 +67,6 @@ benchmark!(
     3,
     [
         define_graph(Neo4jBackend("http://localhost:7474", "neo4j", ENV["NEO4J_PASSWORD"], "manual", false), GraphSolveSettings()),
-        define_graph(Neo4jBackend("http://localhost:7474", "neo4j", ENV["NEO4J_PASSWORD"], "s1000", false), GraphSolveSettings())
+        define_graph(Neo4jBackend("http://localhost:7474", "neo4j", ENV["NEO4J_PASSWORD"], "s100", false), GraphSolveSettings())
     ],
 )
