@@ -60,7 +60,7 @@ function has_finished_search(context::ExecutionContext, state::IncrementalState)
         end
 
         # Log for every iteration so there's some progress tracker
-        println("Finished constraint solving iteration...")
+        println("Finished constraint solving iteration with $(length(copy)) paths...")
         
         # If this instruction doesn't rely on edges, never iterate as there is nothing to find!
         if !context.instruction.include_edges
@@ -187,8 +187,8 @@ function incremental_path_search(context::ExecutionContext, connector::Connector
                         @async begin
                             # Fetch the k-shortest paths from each path, if we find enough new paths we keep
                             # it in the list to try find more in a future iteration!
-                            new_paths = get_k_shortest_paths(context, connector, candidate.src, candidate.dst, new_k, candidate_paths)
-                            added_paths += new_paths
+                            new_valid_paths, new_paths = get_k_shortest_paths(context, connector, candidate.src, candidate.dst, new_k, candidate_paths)
+                            added_paths += new_valid_paths
                             if new_paths < (added_k_value - 5)
                                 delete!(options, (candidate.src, candidate.dst))
                             end
@@ -197,8 +197,8 @@ function incremental_path_search(context::ExecutionContext, connector::Connector
                 else
                     # Fetch the k-shortest paths from each path, if we find enough new paths we keep
                     # it in the list to try find more in a future iteration!
-                    new_paths = get_k_shortest_paths(context, connector, candidate.src, candidate.dst, new_k, candidate_paths)
-                    added_paths += new_paths
+                    new_valid_paths, new_paths = get_k_shortest_paths(context, connector, candidate.src, candidate.dst, new_k, candidate_paths)
+                    added_paths += new_valid_paths
                     if new_paths < (added_k_value - 5)
                         delete!(options, (candidate.src, candidate.dst))
                     end

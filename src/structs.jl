@@ -87,7 +87,7 @@ GraphSolveSettings(
 ) = GraphSolveSettings(mode, all_paths_algorithm, use_async_scheduling, preload_nodes, apply_path_constraints, push_down_constraints, re_use_constraint_solutions, solver_type, TimerOutput())
 
 # Define a default variant with all the best options!
-GraphSolveSettings() = GraphSolveSettings(IncrementalPathSearch, Cypher, true, true, true, true, true, SCIPSolver, TimerOutput())
+GraphSolveSettings() = GraphSolveSettings(IncrementalPathSearch, Cypher, false, true, true, true, true, SCIPSolver, TimerOutput())
 
 """
     PathConstraint

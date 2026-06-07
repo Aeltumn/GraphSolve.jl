@@ -113,17 +113,17 @@ function process_output_row(context::ExecutionContext, target::Vector{Path}, row
     # Filter based on non-edge constraints after we've extracted properties
     for constraint in context.source_constraints
         if !evaluate_constraint(constraint, sourceNode, nothing, nothing, nothing, nothing, nothing)
-            return
+            return false
         end
     end
     for constraint in context.target_constraints
         if !evaluate_constraint(constraint, nothing, targetNode, nothing, nothing, nothing, nothing)
-            return
+            return false
         end
     end
     for constraint in context.source_target_constraints
         if !evaluate_constraint(constraint, sourceNode, targetNode, nothing, nothing, nothing, nothing)
-            return
+            return false
         end
     end
 
@@ -161,7 +161,7 @@ function process_output_row(context::ExecutionContext, target::Vector{Path}, row
                 for constraint in context.node_constraints
                     if !evaluate_constraint(constraint, sourceNode, targetNode, node, nothing, nothing, nothing)
                         if isnothing(collection)
-                            return
+                            return false
                         else
                             valid = false
                         end
@@ -211,7 +211,7 @@ function process_output_row(context::ExecutionContext, target::Vector{Path}, row
                     for constraint in context.edge_constraints
                         if !evaluate_constraint(constraint, sourceNode, targetNode, nothing, nothing, edge, nothing)
                             if isnothing(collection)
-                                return
+                                return false
                             else
                                 valid = false
                             end
@@ -233,7 +233,7 @@ function process_output_row(context::ExecutionContext, target::Vector{Path}, row
         for constraint in context.path_constraints
             if !evaluate_constraint(constraint, sourceNode, targetNode, nothing, path_nodes, nothing, edges)
                 if isnothing(collection)
-                    return
+                    return false
                 else
                     valid = false
                 end
@@ -245,12 +245,14 @@ function process_output_row(context::ExecutionContext, target::Vector{Path}, row
     if !isnothing(collection)
         push!(collection, new_path)
         if !valid
-            return
+            return false
         end
     end
     if new_path ∉ target
         push!(target, new_path)
+        return true
     end
+    return false
 end
 
 """ 

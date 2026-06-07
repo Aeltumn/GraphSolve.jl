@@ -69,7 +69,7 @@ function benchmark!(iter, graphs)
                         reset!(graph)
 
                         # Print out the profiling information
-                        println("## Finished running iteration $(n) of $(stringified_settings) on $(graph_type), profiler statistics:")
+                        println("## Finished running iteration $(n) in $(time() - start) seconds of $(stringified_settings) on $(graph_type), profiler statistics:")
                         show(modified_settings.profiler)
                         println("")
                     end

@@ -222,8 +222,6 @@ function get_shortest_paths(context::ExecutionContext, connector::CypherConnecto
             RETURN $(get_merged_properties(context))
         """)
         for row_values in resp
-            # Mark this as the shortest path search, so don't deny any paths from edge constraints outside the database.
-            # Otherwise we don't have any eligible pairs for incremental searching.
             process_output_row(context, output, row_values, true, collection)
         end
     end
@@ -232,6 +230,7 @@ end
 function get_k_shortest_paths(context::ExecutionContext, connector::CypherConnector, source::Int, target::Int, k::Int, output::Vector{Path})
     @timeit context.profiler "get k shortest paths" begin
         count = 0
+        total = 0
         resp = query_cypher(context.profiler, connector, """
             MATCH (s {id: $source}), (t {id: $target})
             CALL gds.shortestPath.yens.stream(
@@ -247,9 +246,11 @@ function get_k_shortest_paths(context::ExecutionContext, connector::CypherConnec
             RETURN $(get_merged_properties(context, false))
         """)
         for row_values in resp
-            count += 1
-            process_output_row(context, output, row_values, false, nothing)
+            if process_output_row(context, output, row_values, false, nothing)
+                count += 1
+            end
+            total += 1
         end
-        return count
+        return count, total
     end
 end

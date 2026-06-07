@@ -2,17 +2,7 @@
     A simple example of a bandwidth constrained configuration.
     Assigns sources to destinations without exceeding any limits.
 """
-
-# Build against dev prototype
-using Revise
-using Pkg
-Pkg.develop(path=".")
-
-using GraphSolve
-using JuMP
-using Dates
-
-function define_graph(backend::GraphBackend, settings::GraphSolveSettings)
+function define_bandwidth_constrained_graph(backend::GraphBackend, settings::GraphSolveSettings)
     graph = SolvableGraph(backend)
 
     # Define a query to find the paths
@@ -70,7 +60,7 @@ function define_graph(backend::GraphBackend, settings::GraphSolveSettings)
 
     function print_path_results(graph)
         total_weight = isempty(paths) ? 0 : sum(node_properties[p.src]["weight"] for p in paths)
-        println("Selected $(length(paths)) paths with a total weight of $(total_weight)")
+        println("For bandwidth constrained problem selected $(length(paths)) paths with a total weight of $(total_weight)")
         for path in paths
             println("  -> $(path.src) to $(path.dst) with weight $(node_properties[path.src]["weight"]) through $(path.edges) which have $(join([edge_properties[e]["max"] for e in path.edges], ", "))")
         end
@@ -78,12 +68,3 @@ function define_graph(backend::GraphBackend, settings::GraphSolveSettings)
     end
     return graph, settings, print_path_results
 end
-
-# Run all graph algorithms and determine database
-benchmark!(
-    3,
-    [
-        define_graph(Neo4jBackend("http://localhost:7474", "neo4j", ENV["NEO4J_PASSWORD"], "manual", false), GraphSolveSettings()),
-        define_graph(Neo4jBackend("http://localhost:7474", "neo4j", ENV["NEO4J_PASSWORD"], "s100", false), GraphSolveSettings())
-    ],
-)

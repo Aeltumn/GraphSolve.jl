@@ -67,7 +67,7 @@ end
 function process_path(context::ExecutionContext, sourceNode::Int, targetNode::Int, output::Vector{Path}, collection::Union{Set{Path}, Nothing}, path)
     # Ignore paths of invalid size!
     if length(path) < 2
-        return
+        return false
     end
 
     # Assemble the path from its edges
@@ -82,7 +82,7 @@ function process_path(context::ExecutionContext, sourceNode::Int, targetNode::In
             for constraint in context.node_constraints
                 if !evaluate_constraint(constraint, sourceNode, targetNode, vertex, nothing, nothing, nothing)
                     if isnothing(collection)
-                        return
+                        return false
                     else
                         valid = false
                     end
@@ -102,7 +102,7 @@ function process_path(context::ExecutionContext, sourceNode::Int, targetNode::In
                 for constraint in context.edge_constraints
                     if !evaluate_constraint(constraint, sourceNode, targetNode, nothing, nothing, edge, nothing)
                         if isnothing(collection)
-                            return
+                            return false
                         else
                             valid = false
                         end
@@ -123,7 +123,7 @@ function process_path(context::ExecutionContext, sourceNode::Int, targetNode::In
         for constraint in context.path_constraints
             if !evaluate_constraint(constraint, sourceNode, targetNode, nothing, path_nodes, nothing, edges)
                 if isnothing(collection)
-                    return
+                    return false
                 else
                     valid = false
                 end
@@ -135,12 +135,14 @@ function process_path(context::ExecutionContext, sourceNode::Int, targetNode::In
     if !isnothing(collection)
         push!(collection, new_path)
         if !valid
-            return
+            return false
         end
     end
     if new_path ∉ output
         push!(output, new_path)
+        return true
     end
+    return false
 end
 
 function process_paths(context::ExecutionContext, connector::JuliaConnectorWrapper, sourceNode::Int, targetNode::Int, output::Vector{Path}, collection::Union{Set{Path}, Nothing}, func)
@@ -150,17 +152,17 @@ function process_paths(context::ExecutionContext, connector::JuliaConnectorWrapp
     # Filter based on non-edge constraints after we've extracted properties
     for constraint in context.source_constraints
         if !evaluate_constraint(constraint, sourceNode, nothing, nothing, nothing, nothing, nothing)
-            return 0
+            return 0, 0
         end
     end
     for constraint in context.target_constraints
         if !evaluate_constraint(constraint, nothing, targetNode, nothing, nothing, nothing, nothing)
-            return 0
+            return 0, 0
         end
     end
     for constraint in context.source_target_constraints
         if !evaluate_constraint(constraint, sourceNode, targetNode, nothing, nothing, nothing, nothing)
-            return 0
+            return 0, 0
         end
     end
 
@@ -169,15 +171,18 @@ function process_paths(context::ExecutionContext, connector::JuliaConnectorWrapp
 
     # Ignore if there are no paths!
     if isempty(paths)
-        return 0
+        return 0, 0
     end
 
+    count = 0
     @timeit context.profiler "process paths" begin    
         for path in paths
-            process_path(context, sourceNode, targetNode, output, collection, path)
+            if process_path(context, sourceNode, targetNode, output, collection, path)
+                count += 1
+            end
         end
     end
-    return length(paths)
+    return count, length(paths)
 end
 
 function get_all_paths(context::ExecutionContext, connector::JuliaConnectorWrapper, source::NodeSelector, target::NodeSelector)

@@ -1,17 +1,7 @@
 """
     An example that finds a very complicated set of paths with identical length.
 """
-
-# Build against dev prototype
-using Revise
-using Pkg
-Pkg.develop(path=".")
-
-using GraphSolve
-using JuMP
-using Dates
-
-function define_graph(backend::GraphBackend, settings::GraphSolveSettings)
+function define_random_length_paths_graph(backend::GraphBackend, settings::GraphSolveSettings)
     graph = SolvableGraph(backend)
 
     # Define a query to find the paths
@@ -37,13 +27,23 @@ function define_graph(backend::GraphBackend, settings::GraphSolveSettings)
 
     # Define a problem to select paths from the path query
     function path_selection(model, paths, x)
-        # Define an integer for the random sum
-        @variable(model, random_sum)
+        # Determine the sum of each path
+        path_sums = Dict(
+            p.id => sum(node_properties[n]["random"] for n in get_path_nodes(p))
+            for p in paths
+        )
 
-        # Ensure every path has the same random sum
-        for path in paths
-            path_sum = sum([node_properties[n]["random"] for n in get_path_nodes(path)])
-            @constraint(model, x[path.id] * (path_sum - random_sum) == 0)
+        # Define a variable for each sum that could be chosen
+        unique_sums = unique(values(path_sums))
+        @variable(model, y[s in unique_sums], Bin)
+
+        # Choose exactly one sum
+        @constraint(model, sum(y) == 1)
+
+        # Bind paths to the sum selection
+        for p in paths
+            s = path_sums[p.id]
+            @constraint(model, x[p.id] <= y[s])
         end
 
         # Set the objective, to maximize weight of selected paths!
@@ -53,7 +53,7 @@ function define_graph(backend::GraphBackend, settings::GraphSolveSettings)
 
     function print_path_results(graph)
         total_weight = isempty(paths) ? 0 : sum(node_properties[p.src]["weight"] for p in paths)
-        println("Selected $(length(paths)) paths with a total weight of $(total_weight) and a random of $(isempty(paths) ? 0 : node_properties[paths[1].edges[1][1]]["random"])")
+        println("For random length paths problem selected $(length(paths)) paths with a total weight of $(total_weight) and a random of $(isempty(paths) ? 0 : node_properties[paths[1].edges[1][1]]["random"])")
         for path in paths
             println("  -> $(path.src) to $(path.dst) with weight $(node_properties[path.src]["weight"]) through $(path.edges)")
         end
@@ -61,12 +61,3 @@ function define_graph(backend::GraphBackend, settings::GraphSolveSettings)
     end
     return graph, settings, print_path_results
 end
-
-# Run all graph algorithms and determine database
-benchmark!(
-    3,
-    [
-        define_graph(Neo4jBackend("http://localhost:7474", "neo4j", ENV["NEO4J_PASSWORD"], "manual", false), GraphSolveSettings()),
-        define_graph(Neo4jBackend("http://localhost:7474", "neo4j", ENV["NEO4J_PASSWORD"], "s100", false), GraphSolveSettings())
-    ],
-)

@@ -1,17 +1,7 @@
 """
     An example where reachability is used as foundational for an assignment problem.
 """
-
-# Build against dev prototype
-using Revise
-using Pkg
-Pkg.develop(path=".")
-
-using GraphSolve
-using JuMP
-using Dates
-
-function define_graph(backend::GraphBackend, settings::GraphSolveSettings)
+function define_maximized_assignments_graph(backend::GraphBackend, settings::GraphSolveSettings)
     graph = SolvableGraph(backend)
 
     # Define a query to find the reachable pairs, not returning edges
@@ -59,7 +49,7 @@ function define_graph(backend::GraphBackend, settings::GraphSolveSettings)
 
     function print_path_results(graph)
         total_value = isempty(paths) ? 0 : sum(node_properties[p.dst]["random"] for p in paths)
-        println("Selected $(length(paths)) assignments with a total weight of $(total_value)")
+        println("For maximized assignment problem selected $(length(paths)) assignments with a total weight of $(total_value)")
         for path in paths
             println("  -> $(path.src) to $(path.dst) with value $(node_properties[path.dst]["random"])")
         end
@@ -67,12 +57,3 @@ function define_graph(backend::GraphBackend, settings::GraphSolveSettings)
     end
     return graph, settings, print_path_results
 end
-
-# Run all graph algorithms and determine database
-benchmark!(
-    3,
-    [
-        define_graph(Neo4jBackend("http://localhost:7474", "neo4j", ENV["NEO4J_PASSWORD"], "manual", false), GraphSolveSettings()),
-        define_graph(Neo4jBackend("http://localhost:7474", "neo4j", ENV["NEO4J_PASSWORD"], "s100", false), GraphSolveSettings())
-    ],
-)
