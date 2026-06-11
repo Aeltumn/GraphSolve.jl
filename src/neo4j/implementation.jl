@@ -17,13 +17,13 @@ end
 function fetch_node_properties(profiler::TimerOutput, connector::CypherConnector, nodes::Set{Int}, path_instructions)
     # Run a singular query to fetch all relevant properties
     properties = Vector{String}()
-    push!(properties, "n.id")
+    push!(properties, "id(n)")
     for (target, instructions) in path_instructions
         for instruction in instructions
             push!(properties, "n.$(instruction.name)")
         end
     end
-    resp = query_cypher(profiler, connector, "MATCH (n) WHERE n.id IN [$(join(nodes, ","))] RETURN $(join(properties, ", "))")
+    resp = query_cypher(profiler, connector, "MATCH (n) WHERE id(n) IN [$(join(nodes, ","))] RETURN $(join(properties, ", "))")
     for row_values in resp
         node = row_values[1]
         idx = 2
@@ -61,8 +61,8 @@ function fetch_edge_properties(profiler::TimerOutput, connector::CypherConnector
         ] as pairs
         UNWIND pairs as p
         MATCH (s)-[e]->(t)
-        WHERE s.id = p.src AND t.id = p.dst
-        RETURN s.id, t.id, $(join(properties, ", "))
+        WHERE id(s) = p.src AND id(t) = p.dst
+        RETURN id(s), id(t), $(join(properties, ", "))
     """)
     for edge_values in resp
         edge = (edge_values[1], edge_values[2])
@@ -120,7 +120,7 @@ function perform_node_pre_fetch(context::ExecutionContext, connector::CypherConn
         end
         empty!(context.source_constraints)
         empty!(context.source_properties)
-        push!(context.source_properties, "s.id")
+        push!(context.source_properties, "id(s)")
         empty!(context.source_properties_instructions)
         context.source = IdNodeSelector(source_list)
 
@@ -157,7 +157,7 @@ function perform_node_pre_fetch(context::ExecutionContext, connector::CypherConn
         end
         empty!(context.target_constraints)
         empty!(context.target_properties)
-        push!(context.target_properties, "t.id")
+        push!(context.target_properties, "id(t)")
         empty!(context.target_properties_instructions)
         context.target = IdNodeSelector(target_list)
     end
@@ -232,7 +232,10 @@ function get_k_shortest_paths(context::ExecutionContext, connector::CypherConnec
         count = 0
         total = 0
         resp = query_cypher(context.profiler, connector, """
-            MATCH (s {id: $source}), (t {id: $target})
+            MATCH (s)
+            WHERE id(s) = $source
+            MATCH (t)
+            WHERE id(t) = $target
             CALL gds.shortestPath.yens.stream(
                 '$(connector.database)',
                 {

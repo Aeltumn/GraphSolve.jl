@@ -22,6 +22,8 @@ end
 function query_cypher(profiler::TimerOutput, connector::BoltNeo4jConnector, query)
     display_query = strip(replace(replace(query, "\n" => " "), r"\s{2,}" => " "))
     @timeit profiler "query $(display_query)" begin
+        @info "Query: $(display_query)"
+        start = time()
         @timeit profiler "start query" result = connector.session.run(query)
         @timeit profiler "process query" begin
             records = Vector{Vector{Any}}()
@@ -36,6 +38,7 @@ function query_cypher(profiler::TimerOutput, connector::BoltNeo4jConnector, quer
                 push!(records, row)
             end
         end
+        @info "Query took $(time() - start) seconds!"
         return records
     end
 end

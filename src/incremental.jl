@@ -35,7 +35,7 @@ function has_finished_search(context::ExecutionContext, state::IncrementalState)
                 state.best_paths = copy
                 state.best_score = score
                 state.best_variables = variables
-                println("Obtained new best score of $(score) (optimal: $(state.optimal_score)) with $(length(copy)) paths selected")
+                @info "Obtained new best score of $(score) (optimal: $(state.optimal_score)) with $(length(copy)) paths selected"
             end
 
             if p >= 0.0 && score * p <= state.optimal_score
@@ -49,7 +49,7 @@ function has_finished_search(context::ExecutionContext, state::IncrementalState)
                 state.best_paths = copy
                 state.best_score = score
                 state.best_variables = variables
-                println("Obtained new best score of $(score) (optimal: $(state.optimal_score)) with $(length(copy)) paths selected")
+                @info "Obtained new best score of $(score) (optimal: $(state.optimal_score)) with $(length(copy)) paths selected"
             end
 
             if p >= 0.0 && state.optimal_score * p <= score
@@ -60,7 +60,7 @@ function has_finished_search(context::ExecutionContext, state::IncrementalState)
         end
 
         # Log for every iteration so there's some progress tracker
-        println("Finished constraint solving iteration with $(length(copy)) paths...")
+        @info "Finished constraint solving iteration with $(length(copy)) paths..."
         
         # If this instruction doesn't rely on edges, never iterate as there is nothing to find!
         if !context.instruction.include_edges

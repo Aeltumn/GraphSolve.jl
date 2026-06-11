@@ -32,7 +32,7 @@ function query_cypher(profiler::TimerOutput, connector::HttpNeo4jConnector, quer
             # Check if there were any errors reported
             if !isempty(data["errors"])
                 for err in data["errors"]
-                    println("Neo4j database reported error ($(err["code"])): $(err["message"])")
+                    @error "Neo4j database reported error ($(err["code"])): $(err["message"])"
                 end
                 error("Neo4j database returned one or more errors that have to be fixed")
             end

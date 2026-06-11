@@ -49,9 +49,9 @@ function define_maximized_assignments_graph(backend::GraphBackend, settings::Gra
 
     function print_path_results(graph)
         total_value = isempty(paths) ? 0 : sum(node_properties[p.dst]["random"] for p in paths)
-        println("For maximized assignment problem selected $(length(paths)) assignments with a total weight of $(total_value)")
+        @info "For maximized assignment problem selected $(length(paths)) assignments with a total weight of $(total_value)"
         for path in paths
-            println("  -> $(path.src) to $(path.dst) with value $(node_properties[path.dst]["random"])")
+            @info "  -> $(path.src) to $(path.dst) with value $(node_properties[path.dst]["random"])"
         end
         return total_value
     end

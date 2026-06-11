@@ -45,9 +45,9 @@ function define_transport_routes_graph(backend::GraphBackend, settings::GraphSol
 
     function print_path_results(graph)
         total_weight = isempty(paths) ? 0 : sum(sum([edge_properties[e]["weight"] for e in p.edges]) for p in paths)
-        println("For transport routes selected $(length(paths)) paths with a total weight of $(total_weight)")
+        @info "For transport routes selected $(length(paths)) paths with a total weight of $(total_weight)"
         for path in paths
-            println("  -> $(path.src) to $(path.dst) with weight $(sum([edge_properties[e]["weight"] for e in path.edges])) through $(path.edges)")
+            @info "  -> $(path.src) to $(path.dst) with weight $(sum([edge_properties[e]["weight"] for e in path.edges])) through $(path.edges)"
         end
         return total_weight
     end

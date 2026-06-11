@@ -8,6 +8,8 @@ using Accessors
 using JuMP
 using HiGHS
 using SCIP
+using Logging
+using LoggingExtras
 
 include("selectors.jl")
 include("structs.jl")

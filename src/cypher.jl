@@ -45,7 +45,7 @@ function as_query(selector::NodeSelector, id::String)
     if selector isa AllNodeSelector
         return CypherQuery("($id)", nothing)
     elseif selector isa IdNodeSelector
-        return CypherQuery("($id)", ["$id.id IN [$(join(selector.ids, ", "))]"])
+        return CypherQuery("($id)", ["id($id) IN [$(join(selector.ids, ", "))]"])
     elseif selector isa LabelNodeSelector
         return CypherQuery("($id:`$(selector.label)`)", nothing)
     elseif selector isa CypherConditionNodeSelector

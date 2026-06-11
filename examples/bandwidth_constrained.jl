@@ -60,9 +60,9 @@ function define_bandwidth_constrained_graph(backend::GraphBackend, settings::Gra
 
     function print_path_results(graph)
         total_weight = isempty(paths) ? 0 : sum(node_properties[p.src]["weight"] for p in paths)
-        println("For bandwidth constrained problem selected $(length(paths)) paths with a total weight of $(total_weight)")
+        @info "For bandwidth constrained problem selected $(length(paths)) paths with a total weight of $(total_weight)"
         for path in paths
-            println("  -> $(path.src) to $(path.dst) with weight $(node_properties[path.src]["weight"]) through $(path.edges) which have $(join([edge_properties[e]["max"] for e in path.edges], ", "))")
+            @info "  -> $(path.src) to $(path.dst) with weight $(node_properties[path.src]["weight"]) through $(path.edges) which have $(join([edge_properties[e]["max"] for e in path.edges], ", "))"
         end
         return total_weight
     end

@@ -10,6 +10,8 @@ Pkg.develop(path=".")
 using GraphSolve
 using JuMP
 using Dates
+using Logging
+using LoggingExtras
 
 include("bandwidth_constrained.jl")
 include("maximized_assignments.jl")
@@ -28,12 +30,9 @@ slashdot = Neo4jBackend("neo4j://localhost:7687", "neo4j", ENV["NEO4J_PASSWORD"]
 benchmark!(
     3,
     [
-        define_maximized_assignments_graph(manual, GraphSolveSettings()),
-        define_maximized_assignments_graph(s1000, GraphSolveSettings()),
-        define_maximized_assignments_graph(s10000, GraphSolveSettings()),
+        # define_maximized_assignments_graph(manual, GraphSolveSettings()),
+        # define_maximized_assignments_graph(s1000, GraphSolveSettings()),
         define_maximized_assignments_graph(unitedPower, GraphSolveSettings()),
-        define_maximized_assignments_graph(mitPhone, GraphSolveSettings()),
-        # define_maximized_assignments_graph(slashdot, GraphSolveSettings()),
         
         # define_maximized_assignments_graph(manual, GraphSolveSettings()),
         # define_transport_routes_graph(manual, GraphSolveSettings()),

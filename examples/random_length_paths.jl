@@ -53,9 +53,9 @@ function define_random_length_paths_graph(backend::GraphBackend, settings::Graph
 
     function print_path_results(graph)
         total_weight = isempty(paths) ? 0 : sum(node_properties[p.src]["weight"] for p in paths)
-        println("For random length paths problem selected $(length(paths)) paths with a total weight of $(total_weight) and a random of $(isempty(paths) ? 0 : node_properties[paths[1].edges[1][1]]["random"])")
+        @info "For random length paths problem selected $(length(paths)) paths with a total weight of $(total_weight) and a random of $(isempty(paths) ? 0 : node_properties[paths[1].edges[1][1]]["random"])"
         for path in paths
-            println("  -> $(path.src) to $(path.dst) with weight $(node_properties[path.src]["weight"]) through $(path.edges)")
+            @info "  -> $(path.src) to $(path.dst) with weight $(node_properties[path.src]["weight"]) through $(path.edges)"
         end
         return total_weight
     end

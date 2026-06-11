@@ -5,7 +5,7 @@
     Returns the merged properties string from the context.
 """
 function get_merged_properties(context::ExecutionContext, supports_edge_properties::Bool=true)
-    # Weave properties so the first two elements are the first source and first target property (s.id, t.id) then the rest
+    # Weave properties so the first two elements are the first source and first target property (id(s), id(t)) then the rest
     parameters = Vector{String}(undef, length(context.source_properties) + length(context.target_properties))
     parameters[1] = context.source_properties[1]
     parameters[2] = context.target_properties[1]
@@ -22,7 +22,7 @@ function get_merged_properties(context::ExecutionContext, supports_edge_properti
         push!(parameters, "[n IN nodes(p) | [$(join(context.node_properties, ", "))]]")
     end
     if !isempty(context.edge_properties)
-        push!(parameters, supports_edge_properties ? "[e IN relationships(p) | [$(join(context.edge_properties, ", "))]]" : "[e IN relationships(p) | [startNode(e).id, endNode(e).id]]")
+        push!(parameters, supports_edge_properties ? "[e IN relationships(p) | [$(join(context.edge_properties, ", "))]]" : "[e IN relationships(p) | [id(startNode(e)), id(endNode(e))]]")
     end
      return join(parameters, ", ")
 end
@@ -263,8 +263,8 @@ end
 function prepare_query_properties(context::ExecutionContext, property_instructions::Set{Instruction})
     @timeit context.profiler "property preparation" begin
         # Prepare properties which fetch base ids
-        push!(context.source_properties, "s.id")
-        push!(context.target_properties, "t.id")
+        push!(context.source_properties, "id(s)")
+        push!(context.target_properties, "id(t)")
 
         # Go through all properties and append them to the appropriate lists
         for instruction in property_instructions
@@ -299,13 +299,13 @@ function prepare_query_properties(context::ExecutionContext, property_instructio
 
         # Determine if we need to include node information
         if context.include_nodes
-            pushfirst!(context.node_properties, "n.id")
+            pushfirst!(context.node_properties, "id(n)")
         end
 
         # Determine if we need to include edge information
         if context.include_edges
-            pushfirst!(context.edge_properties, "endNode(e).id")
-            pushfirst!(context.edge_properties, "startNode(e).id")
+            pushfirst!(context.edge_properties, "id(endNode(e))")
+            pushfirst!(context.edge_properties, "id(startNode(e))")
         else
             empty!(context.edge_properties)
         end
