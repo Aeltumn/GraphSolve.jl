@@ -16,7 +16,7 @@ function determine_connection_headers(backend::Neo4jBackend)::Dict{String, Strin
     return headers
 end
 
-function query_cypher(profiler::TimerOutput, connector::HttpNeo4jConnector, query)
+function query_cypher(profiler::TimerOutput, connector::HttpNeo4jConnector, query, process_row)
     display_query = strip(replace(replace(query, "\n" => " "), r"\s{2,}" => " "))
     @timeit profiler "query $(display_query)" begin
         @timeit profiler "serialize query" body = JSON3.write(Dict("statements" => [Dict("statement" => query)]))
@@ -25,6 +25,9 @@ function query_cypher(profiler::TimerOutput, connector::HttpNeo4jConnector, quer
         # Check that the POST request was succesful and didn't have connection issues
         if resp.status != 200
             error("Request to Neo4j database failed with status code `$(resp.status)`\n$(String(resp.body))")
+        end
+        if isnothing(process_row)
+            return
         end
         @timeit profiler "parse query" data = JSON3.read(resp.body)
 
@@ -42,8 +45,9 @@ function query_cypher(profiler::TimerOutput, connector::HttpNeo4jConnector, quer
                 error("Neo4j database returned no results, is the query valid?")
             end
 
-            result = [row["row"] for row in data["results"][1]["data"]]
+            for row in data["results"][1]["data"]
+                process_row(row["row"])
+            end
         end
-        return result 
     end
 end

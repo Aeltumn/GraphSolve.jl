@@ -53,6 +53,6 @@ end
 
     Queries the given [connector] with the given [query].
 """
-function query_cypher(profiler::TimerOutput, connector::CypherConnector, query)
+function query_cypher(profiler::TimerOutput, connector::CypherConnector, query, process_row)
     error("Selected connector has not been implemented properly")
 end

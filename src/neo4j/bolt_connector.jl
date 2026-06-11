@@ -19,14 +19,16 @@ function create_bolt_connector(backend::Neo4jBackend)
     return BoltNeo4jConnector(session, backend.database, false)
 end
 
-function query_cypher(profiler::TimerOutput, connector::BoltNeo4jConnector, query)
+function query_cypher(profiler::TimerOutput, connector::BoltNeo4jConnector, query, process_row)
     display_query = strip(replace(replace(query, "\n" => " "), r"\s{2,}" => " "))
     @timeit profiler "query $(display_query)" begin
         @info "Query: $(display_query)"
         start = time()
         @timeit profiler "start query" result = connector.session.run(query)
+        if isnothing(process_row)
+            return
+        end
         @timeit profiler "process query" begin
-            records = Vector{Vector{Any}}()
             for record in result
                 # Fetch the entire row at once and pre-allocate correct size before converting types
                 values = collect(record.values())
@@ -35,10 +37,9 @@ function query_cypher(profiler::TimerOutput, connector::BoltNeo4jConnector, quer
                 for i in 1:len
                     row[i] = pyconvert(Any, values[i])
                 end
-                push!(records, row)
+                process_row(row)
             end
         end
         @info "Query took $(time() - start) seconds!"
-        return records
     end
 end
