@@ -43,7 +43,7 @@ end
     Implements a connection to Neo4j over the Bolt protocol.
 """
 mutable struct BoltNeo4jConnector <: CypherConnector
-    session
+    driver
     database::String
     projected::Bool
 end

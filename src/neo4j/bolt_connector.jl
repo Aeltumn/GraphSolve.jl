@@ -15,8 +15,7 @@ function create_bolt_connector(backend::Neo4jBackend)
         connection_timeout=60,
         max_connection_lifetime=24*3600
     )
-    session = driver.session(database = backend.database)
-    return BoltNeo4jConnector(session, backend.database, false)
+    return BoltNeo4jConnector(driver, backend.database, false)
 end
 
 function query_cypher(profiler::TimerOutput, connector::BoltNeo4jConnector, query, process_row)
@@ -24,20 +23,22 @@ function query_cypher(profiler::TimerOutput, connector::BoltNeo4jConnector, quer
     @timeit profiler "query $(display_query)" begin
         @info "Query: $(display_query)"
         start = time()
-        @timeit profiler "start query" result = connector.session.run(query)
-        if isnothing(process_row)
-            return
-        end
-        @timeit profiler "process query" begin
-            for record in result
-                # Fetch the entire row at once and pre-allocate correct size before converting types
-                values = collect(record.values())
-                len = length(values)
-                row = Vector{Any}(undef, len)
-                for i in 1:len
-                    row[i] = pyconvert(Any, values[i])
+        pywith(connector.driver.session(database = connector.database)) do session
+            @timeit profiler "start query" result = session.run(query)
+            if isnothing(process_row)
+                return
+            end
+            @timeit profiler "process query" begin
+                for record in result
+                    # Fetch the entire row at once and pre-allocate correct size before converting types
+                    values = collect(record.values())
+                    len = length(values)
+                    row = Vector{Any}(undef, len)
+                    for i in 1:len
+                        row[i] = pyconvert(Any, values[i])
+                    end
+                    process_row(row)
                 end
-                process_row(row)
             end
         end
         @info "Query took $(time() - start) seconds!"

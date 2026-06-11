@@ -346,7 +346,7 @@ function prepare_constraints(context::ExecutionContext)
                 push!(context.edge_constraints, constraint)
             elseif has_node
                 push!(context.node_constraints, constraint)
-            elseif has_src || has_dst
+            elseif has_src && has_dst
                 push!(context.source_target_constraints, constraint)
             elseif has_src
                 push!(context.source_constraints, constraint)

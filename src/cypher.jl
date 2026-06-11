@@ -114,7 +114,7 @@ function call_to_cypher(expr::Expr)
     error("Unsupported operator $operator")
 end
 
-function expr_to_cypher(expr::Expr)
+function expr_to_cypher(expr)
      if expr isa Symbol
         return symbol_to_cypher(expr), false
     elseif expr isa String
