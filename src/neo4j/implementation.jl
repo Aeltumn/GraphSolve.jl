@@ -215,9 +215,10 @@ function get_shortest_paths(context::ExecutionContext, connector::CypherConnecto
             $(as_query_variable(target, "target"))
             MATCH $(flatten(as_query(source, "s")))
             CALL apoc.path.expandConfig(s, {
+                bfs: true,
                 endNodes: target,
                 relationshipFilter: ">",
-                uniqueness: "NODE_PATH"
+                uniqueness: "NODE_GLOBAL"
             })
             YIELD path
             WITH path as p, nodes(path) AS elements
