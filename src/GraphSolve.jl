@@ -63,9 +63,6 @@ export
     AllPairs,
     SingleSource,
     ApocShortest,
-    
-    AssignSourcesToDestinations,
-    MaximizeSelection,
 
     Minimize,
     Maximize,
@@ -85,6 +82,9 @@ export
     get_unique_edges,
     get_unique_nodes,
     get_path_nodes,
+    require_sources_at_least_one_target,
+    require_sources_at_most_one_target,
+    require_sources_exactly_one_target,
     benchmark!,
     convert_to_cypher,
 

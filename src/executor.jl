@@ -549,18 +549,10 @@ function solve_constraints(context::ExecutionContext, problem_instruction::Probl
             # Disable variable names for speed-up
             set_string_names_on_creation(model, false)
 
-            # If we are assigning sources directly we limit each source to at most one path!
-            if context.instruction.goal == AssignSourcesToDestinations
-                # Define a variable for selecting from the paths
+            # Define a variable for selecting from the paths
+            if context.instruction.unique
                 @variable(model, x[p=1:path_count], Bin)
-
-                for node in get_source_nodes(paths)
-                    filtered_paths = filter(it -> it.src == node, paths)
-                    @constraint(model, sum(x[p.id] for p in filtered_paths) <= 1)
-                end
-            elseif context.instruction.goal == MaximizeSelection
-                # If we want to maximize the selection we allow selecting
-                # entries multiple times.
+            else
                 @variable(model, x[p=1:path_count] >= 0, Int)
             end
 
@@ -588,7 +580,7 @@ function solve_constraints(context::ExecutionContext, problem_instruction::Probl
 
         # Filter paths vector based on inclusion in the variable
         @timeit context.profiler "filter selected paths" begin
-            if context.instruction.goal == MaximizeSelection
+            if !context.instruction.unique
                 # Create a list of all selected paths multiplied by how many
                 # copies we want of each!
                 paths_copy = Vector{Path}(paths)

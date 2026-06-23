@@ -1,17 +1,20 @@
 """
     An example where reachability is used as foundational for an assignment problem.
 """
-function define_maximized_assignments_graph(backend::GraphBackend, settings::GraphSolveSettings)
+function define_maximized_assignments_graph(k, backend::GraphBackend, settings::GraphSolveSettings)
     graph = SolvableGraph(backend)
 
     # Define a query to find the reachable pairs, not returning edges
-    paths = find_paths!(graph, MaximizeSelection, LabelNodeSelector("Source"), LabelNodeSelector("Destination"), false)
+    paths = find_paths!(graph, LabelNodeSelector("Source"), LabelNodeSelector("Target"), false, false)
 
     # Define which properties to extract
     node_properties = NodePropertyDict()
     extract_node_properties!(graph, paths, node_properties, Source, "max")
+    extract_node_properties!(graph, paths, node_properties, Source, "random")
     extract_node_properties!(graph, paths, node_properties, Destination, "max")
     extract_node_properties!(graph, paths, node_properties, Destination, "random")
+
+    @apply_path_constraint(graph, paths, node_properties[dst]["random"] >= k)
     
     # Define the optimal value of the problem
     @optimal(

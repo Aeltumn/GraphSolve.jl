@@ -6,7 +6,7 @@ function define_bandwidth_constrained_graph(backend::GraphBackend, settings::Gra
     graph = SolvableGraph(backend)
 
     # Define a query to find the paths
-    paths = find_paths!(graph, AssignSourcesToDestinations, LabelNodeSelector("Source"), LabelNodeSelector("Destination"), true)
+    paths = find_paths!(graph, LabelNodeSelector("Source"), LabelNodeSelector("Target"), true, true)
 
     # Define which properties to extract
     node_properties = NodePropertyDict()
@@ -38,6 +38,9 @@ function define_bandwidth_constrained_graph(backend::GraphBackend, settings::Gra
 
     # Define a problem to select paths from the path query
     function path_selection(model, paths, x)
+        # Ensure that every source is used only once
+        require_sources_at_most_one_target(model, paths, x)
+
         # Ensure bandwidth of edges are not exceeded!
         edges = get_unique_edges(paths)
         for edge in edges

@@ -35,7 +35,7 @@ function has_finished_search(context::ExecutionContext, state::IncrementalState)
                 state.best_paths = copy
                 state.best_score = score
                 state.best_variables = variables
-                @info "Obtained new best score of $(score) (optimal: $(state.optimal_score)) with $(length(copy)) paths selected"
+                @info "Obtained new best minimum score of $(score) (optimal: $(state.optimal_score)) with $(length(copy)) paths selected"
             end
 
             if p >= 0.0 && score * p <= state.optimal_score
@@ -49,7 +49,7 @@ function has_finished_search(context::ExecutionContext, state::IncrementalState)
                 state.best_paths = copy
                 state.best_score = score
                 state.best_variables = variables
-                @info "Obtained new best score of $(score) (optimal: $(state.optimal_score)) with $(length(copy)) paths selected"
+                @info "Obtained new best maximum score of $(score) (optimal: $(state.optimal_score)) with $(length(copy)) paths selected"
             end
 
             if p >= 0.0 && state.optimal_score * p <= score
@@ -60,7 +60,7 @@ function has_finished_search(context::ExecutionContext, state::IncrementalState)
         end
 
         # Log for every iteration so there's some progress tracker
-        @info "Finished constraint solving iteration with $(length(copy)) paths..."
+        @info "Finished constraint solving iteration with $(length(copy)) paths out of $(length(state.candidate_paths)) for a score of $(score)..."
         
         # If this instruction doesn't rely on edges, never iterate as there is nothing to find!
         if !context.instruction.include_edges
@@ -103,6 +103,7 @@ function incremental_path_search(context::ExecutionContext, connector::Connector
     # Step 3: Attempt to run constraint solving and end if we've reached the answers
     options = Dict{Tuple{Int, Int}, PathOption}()
     state = IncrementalState(problem_instruction, optimal_score, candidate_paths, nothing, nothing, nothing, options)
+    @info "Running first verification with $(length(candidate_paths)) candidates and a collection of $(length(collection)) pairs"
     if has_finished_search(context, state)
         return
     end
@@ -132,30 +133,8 @@ function incremental_path_search(context::ExecutionContext, connector::Connector
         # than solving because it's parallel whereas solving isn't. So we run a lot of tasks
         # before we make an attempt to solve again.
         @timeit context.profiler "search for additional candidate paths" begin
-            max_tasks = 500
-            added_k_value = 100
-            max_k_value = 10000
-            minimum_paths = 5000
-
-            # Determine sets of previously used logic
-            goal = context.instruction.goal
-            used_sources = goal == AssignSourcesToDestinations ? get_source_nodes(state.best_paths) : nothing
-            
-            # If we're assigning every source to a destination we ignore
-            # paths if we've already assigned that source.
-            if goal == AssignSourcesToDestinations
-                selectable = Vector{PathOption}()
-                for candidate in values(options)
-                    if candidate.src ∈ used_sources
-                        continue
-                    end
-                    push!(selectable, candidate)
-                end
-            else
-                selectable = collect(values(options))
-            end
-
             # Shuffle the candidates randomly before sorting by lowest k
+            selectable = collect(values(options))
             shuffle!(rng, selectable)
             sort!(selectable, by = it -> it.k)
 
@@ -164,65 +143,44 @@ function incremental_path_search(context::ExecutionContext, connector::Connector
                 break
             end
 
-            # Go through the first k selectables and create tasks
-            tasks = Vector{Task}()
-            j = 0
-            tasks_scheduled = 0
+            # Go through the first k selectables
+            scheduled_paths = 0
             for candidate in selectable
                 # Stop iterating when we reach the limit!
-                if j >= max_tasks
+                if scheduled_paths > context.settings.maximum_paths
                     break
                 end
-                j += 1
 
                 # Get k-shortest paths for this candidate, keep finding more paths every iteration
-                new_k = max(added_k_value, candidate.k + added_k_value)
+                increment = floor(Int, context.settings.delta_k * (1 + candidate.k / context.settings.delta_k))
+                new_k = candidate.k + increment
                 candidate.k = new_k
 
                 # Find the k-shortest paths for this group
-                tasks_scheduled += 1
-                if context.settings.use_async_scheduling
-                    push!(
-                        tasks,
-                        @async begin
-                            # Fetch the k-shortest paths from each path, if we find enough new paths we keep
-                            # it in the list to try find more in a future iteration!
-                            new_valid_paths, new_paths = get_k_shortest_paths(context, connector, candidate.src, candidate.dst, new_k, candidate_paths)
-                            added_paths += new_valid_paths
-                            if new_paths < (added_k_value - 5)
-                                delete!(options, (candidate.src, candidate.dst))
-                            end
-                        end
-                    )
-                else
-                    # Fetch the k-shortest paths from each path, if we find enough new paths we keep
-                    # it in the list to try find more in a future iteration!
-                    new_valid_paths, new_paths = get_k_shortest_paths(context, connector, candidate.src, candidate.dst, new_k, candidate_paths)
-                    added_paths += new_valid_paths
-                    if new_paths < (added_k_value - 5)
-                        delete!(options, (candidate.src, candidate.dst))
-                    end
+                scheduled_paths += increment
+
+                # Fetch the k-shortest paths from each path, if we find enough new paths we keep
+                # it in the list to try find more in a future iteration!
+                new_valid_paths, new_paths = get_k_shortest_paths(context, connector, candidate.src, candidate.dst, new_k, candidate_paths)
+                added_paths += new_valid_paths
+                if new_paths < (increment - 5)
+                    delete!(options, (candidate.src, candidate.dst))
                 end
 
                 # Never fetch more than the maximum paths!
-                if new_k >= max_k_value
+                if new_k >= context.settings.max_k
                     delete!(options, (candidate.src, candidate.dst))
                 end
             end
 
-            # Wait for all queries to complete
-            for task in tasks
-                wait(task)
-            end
-
             # If there were no tasks, break the loop!
-            if tasks_scheduled <= 0
+            if scheduled_paths <= 0
                 break
             end
         end
 
         # Skip constraint solving if there's not enough new paths!
-        if added_paths <= minimum_paths
+        if added_paths <= context.settings.minimum_paths
             continue
         end
 

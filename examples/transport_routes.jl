@@ -5,7 +5,7 @@ function define_transport_routes_graph(backend::GraphBackend, settings::GraphSol
     graph = SolvableGraph(backend)
 
     # Define a query to find the paths
-    paths = find_paths!(graph, AssignSourcesToDestinations, LabelNodeSelector("Source"), LabelNodeSelector("Destination"), true)
+    paths = find_paths!(graph, LabelNodeSelector("Source"), LabelNodeSelector("Destination"), true, true)
 
     # Define which properties to extract
     node_properties = NodePropertyDict()
@@ -24,22 +24,19 @@ function define_transport_routes_graph(backend::GraphBackend, settings::GraphSol
         Minimize,
         Hour(1),
         begin
-            # An ideal solution uses minimal route weights.
+            # An optimal solution uses minimal route weights.
             length(sources)
         end
     )
 
     # Define a problem to select paths from the path query
     function path_selection(model, paths, x)
-        # Ensure that every source is assigned
-        for node in get_source_nodes(paths)
-            filtered_paths = filter(it -> it.src == node, paths)
-            @constraint(model, sum(x[p.id] for p in filtered_paths) == 1)
-        end
+        # Ensure that every source is assigned one route
+        require_sources_exactly_one_target(model, paths, x)
 
         # Set the objective to minimize the total edge weights
-        weighted_paths = [(p, sum([edge_properties[e]["weight"] for e in p.edges])) for p in paths]
-        @objective(model, Min, sum(x[p.id] * weight for (p, weight) in weighted_paths))
+        weighted_paths = [(p.id, sum([edge_properties[e]["weight"] for e in p.edges])) for p in paths]
+        @objective(model, Min, sum(x[pid] * weight for (pid, weight) in weighted_paths))
     end
     define_problem!(graph, paths, path_selection)
 

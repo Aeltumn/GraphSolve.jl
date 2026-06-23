@@ -13,7 +13,8 @@ function create_bolt_connector(backend::Neo4jBackend)
         backend.url, 
         auth = (backend.user, backend.password),
         connection_timeout=60,
-        max_connection_lifetime=24*3600
+        max_connection_lifetime=24*3600,
+        notifications_min_severity="OFF"
     )
     return BoltNeo4jConnector(driver, backend.database, false)
 end
@@ -21,8 +22,6 @@ end
 function query_cypher(profiler::TimerOutput, connector::BoltNeo4jConnector, query, process_row)
     display_query = strip(replace(replace(query, "\n" => " "), r"\s{2,}" => " "))
     @timeit profiler "query $(display_query)" begin
-        @info "Query: $(display_query)"
-        start = time()
         pywith(connector.driver.session(database = connector.database)) do session
             @timeit profiler "start query" result = session.run(query)
             if isnothing(process_row)
@@ -41,6 +40,5 @@ function query_cypher(profiler::TimerOutput, connector::BoltNeo4jConnector, quer
                 end
             end
         end
-        @info "Query took $(time() - start) seconds!"
     end
 end

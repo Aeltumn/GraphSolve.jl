@@ -5,16 +5,19 @@
     Adds a new instruction to [graph] to determine all paths from nodes called [source] to
     nodes called [target] and store them into the returned vector. Edges are included if requested,
     otherwise we only find pairs of nodes that have some connection.
+
+    If [unique] is true, paths can only be selected a single time. Otherwise, paths can be selected as
+    many times as allowed within constraints.
 """
-function find_paths!(graph::SolvableGraph, goal::PathQueryGoal, source::NodeSelector, target::NodeSelector, include_edges::Bool=false)
+function find_paths!(graph::SolvableGraph, source::NodeSelector, target::NodeSelector, unique::Bool, include_edges::Bool=false)
     paths = Vector{Path}()
     push!(
         graph.instructions,
         PathInstruction(
             paths,
-            goal,
             source,
             target,
+            unique,
             include_edges,
             Vector{PathConstraint}(),
             nothing
@@ -331,4 +334,43 @@ end
 """
 function get_path_nodes(path)
     return  [path.edges[1][1]; last.(path.edges)]
+end
+
+"""
+    require_sources_at_least_one_target
+
+    Ensures that all source nodes have at least one target
+    which ensures all sources are at least assigned.
+"""
+function require_sources_at_least_one_target(model, paths, x)
+    for node in get_source_nodes(paths)
+        filtered_paths = map(it -> it.id, filter(it -> it.src == node, paths))
+        @constraint(model, sum(x[pid] for pid in filtered_paths) >= 1)
+    end
+end
+
+"""
+    require_sources_at_most_one_target
+
+    Ensures that all source nodes have at most one target
+    which ensures no sources are assigned twice.
+"""
+function require_sources_at_most_one_target(model, paths, x)
+    for node in get_source_nodes(paths)
+        filtered_paths = map(it -> it.id, filter(it -> it.src == node, paths))
+        @constraint(model, sum(x[pid] for pid in filtered_paths) <= 1)
+    end
+end
+
+"""
+    require_sources_exactly_one_target
+
+    Ensures that all source nodes must be assigned to exactly
+    one target.
+"""
+function require_sources_exactly_one_target(model, paths, x)
+    for node in get_source_nodes(paths)
+        filtered_paths = map(it -> it.id, filter(it -> it.src == node, paths))
+        @constraint(model, sum(x[pid] for pid in filtered_paths) == 1)
+    end
 end

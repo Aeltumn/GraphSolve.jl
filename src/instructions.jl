@@ -15,9 +15,9 @@ abstract type Instruction end
 """
 mutable struct PathInstruction <: Instruction
     output::Vector{Path}
-    goal::PathQueryGoal
     source::NodeSelector
     target::NodeSelector
+    unique::Bool
     include_edges::Bool
     constraints::Vector{PathConstraint}
     optimal::Union{OptimalDefinition, Nothing}

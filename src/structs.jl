@@ -16,18 +16,6 @@ end
     SCIPSolver
 end
 @enum GraphComponent Source Edges Destination
-"""
-    PathQueryGoal
-
-    Defines the different goals a path query can have.
-
-    [AssignSourcesToDestinations] attempts to find an assignment for each source to some destination.
-    [MaximizeSelection] selects as many paths as possible, regardless of origin or target.
-"""
-@enum PathQueryGoal begin
-    AssignSourcesToDestinations
-    MaximizeSelection
-end
 const Edge = Tuple{Int, Int}
 const NodePropertyDict = Dict{Int, Dict{String, Any}}
 const EdgePropertyDict = Dict{Edge, Dict{String, Any}}
@@ -60,6 +48,18 @@ const EdgePropertyDict = Dict{Edge, Dict{String, Any}}
     [re_use_constraint_solutions]
     Re-uses constraint solutions from previous runs when iterating.
 
+    [delta_k]
+    The amount of extra k-shortest paths to fetch between nodes every iteration.
+
+    [max_k]
+    The maximum k-shortest paths to find for any node pair.
+
+    [minimum_paths]
+    The minimum paths to fetch before trying to solve for constraints.
+
+    [maximum_paths]
+    The maximum paths to fetch before trying to solve for constraints.
+
     [solver_type]
     Which type of solver to use, SCIP performs better than HiGHS on large graphs.
 """
@@ -72,22 +72,15 @@ struct GraphSolveSettings
     push_down_constraints::Bool
     re_use_constraint_solutions::Bool
     solver_type::SolverType
+    delta_k::Int
+    max_k::Int
+    minimum_paths::Int
+    maximum_paths::Int
     profiler::TimerOutput
 end
 
-GraphSolveSettings(
-    mode::SolutionMode,
-    all_paths_algorithm::AllPathsAlgorithm,
-    use_async_scheduling::Bool,
-    preload_nodes::Bool,
-    apply_path_constraints::Bool,
-    push_down_constraints::Bool,
-    re_use_constraint_solutions::Bool,
-    solver_type::SolverType
-) = GraphSolveSettings(mode, all_paths_algorithm, use_async_scheduling, preload_nodes, apply_path_constraints, push_down_constraints, re_use_constraint_solutions, solver_type, TimerOutput())
-
 # Define a default variant with all the best options!
-GraphSolveSettings() = GraphSolveSettings(IncrementalPathSearch, Cypher, false, true, true, true, true, SCIPSolver, TimerOutput())
+GraphSolveSettings() = GraphSolveSettings(IncrementalPathSearch, Cypher, true, true, true, true, true, SCIPSolver, 100, 1000, 10000, 20000, TimerOutput())
 
 """
     PathConstraint

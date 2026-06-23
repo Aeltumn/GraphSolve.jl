@@ -28,11 +28,22 @@ mitPhone = Neo4jBackend("neo4j://localhost:7687", "neo4j", ENV["NEO4J_PASSWORD"]
 slashdot = Neo4jBackend("neo4j://localhost:7687", "neo4j", ENV["NEO4J_PASSWORD"], "slashdot", true)
 
 benchmark!(
-    3,
+    0,
     [
+        define_transport_routes_graph(s1000, GraphSolveSettings()),
+    
         # define_maximized_assignments_graph(manual, GraphSolveSettings()),
         # define_maximized_assignments_graph(s1000, GraphSolveSettings()),
-        define_maximized_assignments_graph(unitedPower, GraphSolveSettings()),
+        # define_maximized_assignments_graph(unitedPower, GraphSolveSettings()),
+        # define_maximized_assignments_graph(mitPhone, GraphSolveSettings()),
+        # define_maximized_assignments_graph(99, s10000, GraphSolveSettings()),
+        # define_maximized_assignments_graph(95, s10000, GraphSolveSettings()),
+        # define_maximized_assignments_graph(90, s10000, GraphSolveSettings()),
+        # define_maximized_assignments_graph(80, s10000, GraphSolveSettings()),
+        # define_maximized_assignments_graph(75, s10000, GraphSolveSettings()),
+        # define_maximized_assignments_graph(50, s10000, GraphSolveSettings()),
+        # define_maximized_assignments_graph(25, s10000, GraphSolveSettings()),
+        # define_maximized_assignments_graph(0, s10000, GraphSolveSettings()),
         
         # define_maximized_assignments_graph(manual, GraphSolveSettings()),
         # define_transport_routes_graph(manual, GraphSolveSettings()),
