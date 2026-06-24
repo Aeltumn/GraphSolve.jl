@@ -35,7 +35,7 @@ function has_finished_search(context::ExecutionContext, state::IncrementalState)
                 state.best_paths = copy
                 state.best_score = score
                 state.best_variables = variables
-                @info "Obtained new best minimum score of $(score) (optimal: $(state.optimal_score)) with $(length(copy)) paths selected"
+                @info "Obtained new best minimum score of $(score) with $(length(copy)) paths selected"
 
                 # Determine if this is the optimal score!
                 if context.instruction.optimal.compiled(state.sources, state.destinations, copy, score)
@@ -49,7 +49,7 @@ function has_finished_search(context::ExecutionContext, state::IncrementalState)
                 state.best_paths = copy
                 state.best_score = score
                 state.best_variables = variables
-                @info "Obtained new best maximum score of $(score) (optimal: $(state.optimal_score)) with $(length(copy)) paths selected"
+                @info "Obtained new best maximum score of $(score) with $(length(copy)) paths selected"
 
                 # Determine if this is the optimal score!
                 if context.instruction.optimal.compiled(state.sources, state.destinations, copy, score)
