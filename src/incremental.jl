@@ -38,7 +38,7 @@ function has_finished_search(context::ExecutionContext, state::IncrementalState)
                 @info "Obtained new best minimum score of $(score) (optimal: $(state.optimal_score)) with $(length(copy)) paths selected"
 
                 # Determine if this is the optimal score!
-                if context.instruction.optimal.compiled(context.sources, context.destinations, copy, score)
+                if context.instruction.optimal.compiled(state.sources, state.destinations, copy, score)
                     append!(context.instruction.output, copy)
                     return true
                 end
@@ -52,7 +52,7 @@ function has_finished_search(context::ExecutionContext, state::IncrementalState)
                 @info "Obtained new best maximum score of $(score) (optimal: $(state.optimal_score)) with $(length(copy)) paths selected"
 
                 # Determine if this is the optimal score!
-                if context.instruction.optimal.compiled(context.sources, context.destinations, copy, score)
+                if context.instruction.optimal.compiled(state.sources, state.destinations, copy, score)
                     append!(context.instruction.output, copy)
                     return true
                 end
