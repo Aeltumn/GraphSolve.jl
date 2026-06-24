@@ -7,12 +7,13 @@ end
 
 mutable struct IncrementalState
     problem_instruction::ProblemInstruction
-    optimal_score
     candidate_paths::Vector{Path}
     best_score
     best_paths
     best_variables
     options::Dict{Tuple{Int, Int}, PathOption}
+    sources::Set{Int}
+    destinations::Set{Int}
 end
 
 """
@@ -27,7 +28,6 @@ function has_finished_search(context::ExecutionContext, state::IncrementalState)
         # the allowed bounds to stop the algorithm.
         copy = Vector{Path}(state.candidate_paths)
         score, variables = solve_constraints(context, state.problem_instruction, copy, state.best_variables)
-        p = context.instruction.optimal.p
 
         if context.instruction.optimal.mode == Minimize
             # Update the best score so far
@@ -36,12 +36,12 @@ function has_finished_search(context::ExecutionContext, state::IncrementalState)
                 state.best_score = score
                 state.best_variables = variables
                 @info "Obtained new best minimum score of $(score) (optimal: $(state.optimal_score)) with $(length(copy)) paths selected"
-            end
 
-            if p >= 0.0 && score * p <= state.optimal_score
-                # Store the final solution in the output array!
-                append!(context.instruction.output, copy)
-                return true
+                # Determine if this is the optimal score!
+                if context.instruction.optimal.compiled(context.sources, context.destinations, copy, score)
+                    append!(context.instruction.output, copy)
+                    return true
+                end
             end
         else
             # Update the best score so far
@@ -50,12 +50,12 @@ function has_finished_search(context::ExecutionContext, state::IncrementalState)
                 state.best_score = score
                 state.best_variables = variables
                 @info "Obtained new best maximum score of $(score) (optimal: $(state.optimal_score)) with $(length(copy)) paths selected"
-            end
 
-            if p >= 0.0 && state.optimal_score * p <= score
-                # Store the final solution in the output array!
-                append!(context.instruction.output, copy)
-                return true
+                # Determine if this is the optimal score!
+                if context.instruction.optimal.compiled(context.sources, context.destinations, copy, score)
+                    append!(context.instruction.output, copy)
+                    return true
+                end
             end
         end
 
@@ -93,16 +93,15 @@ function incremental_path_search(context::ExecutionContext, connector::Connector
     # Step 1b: Fetch properties for newly added nodes & edges
     fetch_all_properties(context, connector, collection)
 
-    # Step 2: Determine the optimal value to strive for
-    @timeit context.profiler "determine optimal value" begin
+    # Step 2: Determine original sources and destinations for optimal solution
+    @timeit context.profiler "determine sources and destinations for stopping condition" begin
         sources = get_source_nodes(collection)
         destinations = get_destination_nodes(collection)
-        optimal_score = context.instruction.optimal.compiled(sources, destinations)
     end
 
     # Step 3: Attempt to run constraint solving and end if we've reached the answers
     options = Dict{Tuple{Int, Int}, PathOption}()
-    state = IncrementalState(problem_instruction, optimal_score, candidate_paths, nothing, nothing, nothing, options)
+    state = IncrementalState(problem_instruction, candidate_paths, nothing, nothing, nothing, options, sources, destinations)
     @info "Running first verification with $(length(candidate_paths)) candidates and a collection of $(length(collection)) pairs"
     if has_finished_search(context, state)
         return

@@ -1,7 +1,7 @@
 """
     An example where reachability is used as foundational for an assignment problem.
 """
-function define_maximized_assignments_graph(k, backend::GraphBackend, settings::GraphSolveSettings)
+function define_maximized_assignments_graph(backend::GraphBackend, settings::GraphSolveSettings)
     graph = SolvableGraph(backend)
 
     # Define a query to find the reachable pairs, not returning edges
@@ -10,23 +10,19 @@ function define_maximized_assignments_graph(k, backend::GraphBackend, settings::
     # Define which properties to extract
     node_properties = NodePropertyDict()
     extract_node_properties!(graph, paths, node_properties, Source, "max")
-    extract_node_properties!(graph, paths, node_properties, Source, "random")
     extract_node_properties!(graph, paths, node_properties, Destination, "max")
     extract_node_properties!(graph, paths, node_properties, Destination, "random")
-
-    @apply_path_constraint(graph, paths, node_properties[dst]["random"] >= k)
     
     # Define the optimal value of the problem
     @optimal(
         graph,
         paths,
-        1.0,
         Maximize,
         false,
         Hour(1),
         begin
             # The optimal solution assigns every destination maximally, assuming there's enough sources.
-            sum([node_properties[t]["random"] * node_properties[t]["max"] for t in destinations])
+            score >= sum([node_properties[t]["random"] * node_properties[t]["max"] for t in destinations])
         end
     )
 
@@ -35,15 +31,15 @@ function define_maximized_assignments_graph(k, backend::GraphBackend, settings::
         # Ensure sources are not over-assigned
         for node in get_source_nodes(paths)
             max = get(node_properties[node], "max", typemax(Int64))
-            filtered_paths = filter(it -> it.src == node, paths)
-            @constraint(model, sum(x[p.id] for p in filtered_paths) <= max)
+            filtered_paths = map(it -> it.id, filter(it -> it.src == node, paths))
+            @constraint(model, sum(x[pid] for pid in filtered_paths) <= max)
         end
 
         # Ensure destinations are not over-assigned
         for node in get_destination_nodes(paths)
             max = get(node_properties[node], "max", typemax(Int64))
-            filtered_paths = filter(it -> it.dst == node, paths)
-            @constraint(model, sum(x[p.id] for p in filtered_paths) <= max)
+            filtered_paths = map(it -> it.id, filter(it -> it.dst == node, paths))
+            @constraint(model, sum(x[pid] for pid in filtered_paths) <= max)
         end
 
         # Set the objective to maximize the random values of all assignments

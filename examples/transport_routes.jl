@@ -20,13 +20,13 @@ function define_transport_routes_graph(backend::GraphBackend, settings::GraphSol
     @optimal(
         graph,
         paths,
-        1.0,
         Minimize,
         false,
         Hour(1),
         begin
-            # An optimal solution uses minimal route weights.
-            length(sources)
+            # A solution is optimal if it includes every eligible source!
+            linked_sources = get_source_nodes(paths)
+            all(it -> it ∈ linked_sources, sources)
         end
     )
 

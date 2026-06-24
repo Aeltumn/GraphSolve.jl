@@ -23,14 +23,13 @@ function define_bandwidth_constrained_graph(backend::GraphBackend, settings::Gra
     @optimal(
         graph,
         paths,
-        1.0,
         Maximize,
         true,
         Hour(1),
         begin
-            min(
-                # The optimal value is the less of either the maximum weight or the minimum capacity depending
-                # on which is lower as it bounds the other.
+            # The optimal value is the less of either the maximum weight or the minimum capacity depending
+            # on which is lower as it bounds the other.
+            score >= min(
                 sum([node_properties[s]["weight"] for s in sources]),
                 sum([node_properties[t]["max"] for t in destinations])
             )

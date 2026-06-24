@@ -120,9 +120,6 @@ end
     Defines the optimal value of the problem and how close to the optimal solution
     needs to be searched.
 
-    [p] should be a value between 0 and 1 that defines how close the found solution
-    should be the the optimal value. 0.9 means it can be 10% lower, 0.99 means only 1% is allowed.
-
     [mode] should be Minimize or Maximize depending on if the value should be minimized or maximized.
 
     [dependent_paths] is whether there are dependencies between path constraints. If paths are independent
@@ -131,10 +128,11 @@ end
 
     [timeout] sets the maximum time the problem can take.
 
-    [provider] should be a function returning some number based on variables `sources`
-    and `destinations`. This should equal the optimal value of the @objective function.
+    [stopping_condition] sets the stopping condition of the algorithm. Provided with variables [sources] and [destinations]
+    including all possible source and destination nodes, alongside [paths] which is the last best selection. It is also 
+    provided [score] which is the value of the optimization function.
 """
-macro optimal(graph, paths, p, mode, dependent_paths, timeout, provider)
+macro optimal(graph, paths, mode, dependent_paths, timeout, stopping_condition)
     esc(quote
         # Find the path instructions and append the constraint to its list
         local instructions = $graph.instructions
@@ -143,10 +141,10 @@ macro optimal(graph, paths, p, mode, dependent_paths, timeout, provider)
         if id == nothing
             error("Could not find the instruction for the paths variable, is it from this graph?")
         end
-        local compiled = (sources, destinations) -> begin
-            $provider
+        local compiled = (sources, destinations, paths, score) -> begin
+            $stopping_condition
         end
-        instructions[id].optimal = OptimalDefinition($p, $mode, $dependent_paths, compiled, $timeout, time())
+        instructions[id].optimal = OptimalDefinition($mode, $dependent_paths, compiled, $timeout, time())
     end)
 end
 

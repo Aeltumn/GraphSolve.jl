@@ -99,7 +99,6 @@ end
     Defines the optimal value of a problem.
 """
 struct OptimalDefinition
-    p
     mode::Objective
     dependent_paths
     compiled

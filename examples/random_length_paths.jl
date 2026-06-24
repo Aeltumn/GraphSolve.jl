@@ -16,13 +16,12 @@ function define_random_length_paths_graph(backend::GraphBackend, settings::Graph
     @optimal(
         graph,
         paths,
-        1.0,
         Maximize,
         true,
         Hour(1),
         begin
             # The optimal solution assigns every source.
-            sum([node_properties[s]["weight"] for s in sources])
+            score >= sum([node_properties[s]["weight"] for s in sources])
         end
     )
 
