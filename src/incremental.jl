@@ -88,7 +88,7 @@ function incremental_path_search(context::ExecutionContext, connector::Connector
     # the feasible paths.
     collection = Set{Path}()
     candidate_paths = Vector{Path}()
-    get_shortest_paths(context, connector, context.source, context.target, candidate_paths, collection)
+    get_shortest_paths(context, connector, context.source, context.target, candidate_paths, collection, problem_instruction.path.weight_property)
 
     # Step 1b: Fetch properties for newly added nodes & edges
     fetch_all_properties(context, connector, collection)
@@ -111,8 +111,26 @@ function incremental_path_search(context::ExecutionContext, connector::Connector
     # Step 4: Determine all feasible (source, destination) pairs and create holding
     # objects for each of them which we can later test.
     @timeit context.profiler "prepare path options" begin
+        solved_pairs = Set{Tuple{Int, Int}}()
+        if !context.instruction.optimal.dependent_paths
+            for path in candidate_paths
+                pair = (path.src, path.dst)
+                push!(solved_pairs, pair)
+            end
+        end
+
         for path in collection
             pair = (path.src, path.dst)
+
+            # If paths are independent we can ignore any paths that we
+            # already selected in the candidate paths, we only have to
+            # search until we can find one valid path for each pair.
+            if !context.instruction.optimal.dependent_paths
+                if pair ∈ solved_pairs
+                    continue
+                end
+            end
+
             if !haskey(options, pair)
                 options[pair] = PathOption(path.src, path.dst, 0)
             end
@@ -161,7 +179,7 @@ function incremental_path_search(context::ExecutionContext, connector::Connector
 
                 # Fetch the k-shortest paths from each path, if we find enough new paths we keep
                 # it in the list to try find more in a future iteration!
-                new_valid_paths, new_paths = get_k_shortest_paths(context, connector, candidate.src, candidate.dst, new_k, candidate_paths)
+                new_valid_paths, new_paths = get_k_shortest_paths(context, connector, candidate.src, candidate.dst, new_k, candidate_paths, problem_instruction.path.weight_property)
                 added_paths += new_valid_paths
                 if new_paths < (increment - 5)
                     delete!(options, (candidate.src, candidate.dst))

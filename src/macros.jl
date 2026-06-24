@@ -9,7 +9,7 @@
     If [unique] is true, paths can only be selected a single time. Otherwise, paths can be selected as
     many times as allowed within constraints.
 """
-function find_paths!(graph::SolvableGraph, source::NodeSelector, target::NodeSelector, unique::Bool, include_edges::Bool=false)
+function find_paths!(graph::SolvableGraph, source::NodeSelector, target::NodeSelector, unique::Bool, include_edges::Bool=false, weight_property::Union{String, Nothing}=nothing)
     paths = Vector{Path}()
     push!(
         graph.instructions,
@@ -19,6 +19,7 @@ function find_paths!(graph::SolvableGraph, source::NodeSelector, target::NodeSel
             target,
             unique,
             include_edges,
+            weight_property,
             Vector{PathConstraint}(),
             nothing
         )
@@ -124,12 +125,16 @@ end
 
     [mode] should be Minimize or Maximize depending on if the value should be minimized or maximized.
 
+    [dependent_paths] is whether there are dependencies between path constraints. If paths are independent
+    (this value is `false`) then there should be no need to find multiple paths between sources & targets
+    as there is no reason to deny paths outside of path constraints.
+
     [timeout] sets the maximum time the problem can take.
 
     [provider] should be a function returning some number based on variables `sources`
     and `destinations`. This should equal the optimal value of the @objective function.
 """
-macro optimal(graph, paths, p, mode, timeout, provider)
+macro optimal(graph, paths, p, mode, dependent_paths, timeout, provider)
     esc(quote
         # Find the path instructions and append the constraint to its list
         local instructions = $graph.instructions
@@ -141,7 +146,7 @@ macro optimal(graph, paths, p, mode, timeout, provider)
         local compiled = (sources, destinations) -> begin
             $provider
         end
-        instructions[id].optimal = OptimalDefinition($p, $mode, compiled, $timeout, time())
+        instructions[id].optimal = OptimalDefinition($p, $mode, $dependent_paths, compiled, $timeout, time())
     end)
 end
 
@@ -185,7 +190,7 @@ function execute_path_instruction(backend::GraphBackend, settings::GraphSolveSet
     # Create a connector instance
     connector = backend.connector
     if isnothing(connector)
-        connector = create_connector(backend, settings)
+        connector = create_connector(backend, settings, instruction)
         backend.connector = connector
     end
 

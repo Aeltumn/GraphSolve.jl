@@ -5,7 +5,7 @@ function define_transport_routes_graph(backend::GraphBackend, settings::GraphSol
     graph = SolvableGraph(backend)
 
     # Define a query to find the paths
-    paths = find_paths!(graph, LabelNodeSelector("Source"), LabelNodeSelector("Destination"), true, true)
+    paths = find_paths!(graph, LabelNodeSelector("Source"), LabelNodeSelector("Destination"), true, true, "weight")
 
     # Define which properties to extract
     node_properties = NodePropertyDict()
@@ -22,6 +22,7 @@ function define_transport_routes_graph(backend::GraphBackend, settings::GraphSol
         paths,
         1.0,
         Minimize,
+        false,
         Hour(1),
         begin
             # An optimal solution uses minimal route weights.

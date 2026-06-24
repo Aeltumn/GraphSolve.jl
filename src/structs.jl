@@ -101,6 +101,7 @@ end
 struct OptimalDefinition
     p
     mode::Objective
+    dependent_paths
     compiled
     timeout
     start_time

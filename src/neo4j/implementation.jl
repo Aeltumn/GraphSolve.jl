@@ -1,5 +1,5 @@
 # Implements instructions against Neo4j.
-function create_connector(backend::Neo4jBackend, settings::GraphSolveSettings)
+function create_connector(backend::Neo4jBackend, settings::GraphSolveSettings, instruction::PathInstruction)
     if backend.bolt
         connector = create_bolt_connector(backend)
     else
@@ -9,7 +9,11 @@ function create_connector(backend::Neo4jBackend, settings::GraphSolveSettings)
     # Project the database into GDS if we want to use shortest path searching
     if settings.mode == IncrementalPathSearch
         query_cypher(settings.profiler, connector, "CALL gds.graph.drop('$(connector.database)', false)", nothing)
-        query_cypher(settings.profiler, connector, "CALL gds.graph.project('$(connector.database)', '*', '*')", nothing) 
+        if !isnothing(instruction.weight_property)
+            query_cypher(settings.profiler, connector, "CALL gds.graph.project('$(connector.database)', '*', {ALL: { type: '*', properties: '$(instruction.weight_property)'}})", nothing) 
+        else
+            query_cypher(settings.profiler, connector, "CALL gds.graph.project('$(connector.database)', '*', '*')", nothing) 
+        end
     end
     return connector
 end
@@ -206,29 +210,52 @@ function get_all_paths(context::ExecutionContext, connector::CypherConnector, so
     end
 end
 
-function get_shortest_paths(context::ExecutionContext, connector::CypherConnector, source::NodeSelector, target::NodeSelector, output::Vector{Path}, collection::Set{Path})
+function get_shortest_paths(context::ExecutionContext, connector::CypherConnector, source::NodeSelector, target::NodeSelector, output::Vector{Path}, collection::Set{Path}, weight_property::Union{String, Nothing})
     @timeit context.profiler "get shortest paths" begin
-        function process_output(row_values)
-            process_output_row(context, output, row_values, true, collection)
+        if !isnothing(weight_property)
+            # GDS is slower and doesn't return edge properties, but it does support a weight
+            # property which is required to get accurate shortest paths.
+            function process_output_false(row_values)
+                process_output_row(context, output, row_values, false, collection)
+            end
+            query_cypher(context.profiler, connector, """
+                $(as_query_variable(target, "target"))
+                MATCH $(flatten(as_query(source, "s")))
+                CALL gds.shortestPath.dijkstra.stream(
+                    '$(connector.database)',
+                    {
+                        sourceNode: s,
+                        targetNodes: target,
+                        relationshipWeightProperty: '$(weight_property)'
+                    }
+                )
+                YIELD sourceNode, targetNode, path
+                WITH path as p, gds.util.asNode(sourceNode) as s, gds.util.asNode(targetNode) as t
+                RETURN $(get_merged_properties(context, false))
+            """, process_output_false)
+        else
+            function process_output_true(row_values)
+                process_output_row(context, output, row_values, true, collection)
+            end
+            query_cypher(context.profiler, connector, """
+                $(as_query_variable(target, "target"))
+                MATCH $(flatten(as_query(source, "s")))
+                CALL apoc.path.expandConfig(s, {
+                    bfs: true,
+                    endNodes: target,
+                    relationshipFilter: ">",
+                    uniqueness: "NODE_GLOBAL"
+                })
+                YIELD path
+                WITH path as p, nodes(path) AS elements
+                WITH p, elements[0] as s, elements[-1] as t
+                RETURN $(get_merged_properties(context))
+            """, process_output_true)
         end
-        query_cypher(context.profiler, connector, """
-            $(as_query_variable(target, "target"))
-            MATCH $(flatten(as_query(source, "s")))
-            CALL apoc.path.expandConfig(s, {
-                bfs: true,
-                endNodes: target,
-                relationshipFilter: ">",
-                uniqueness: "NODE_GLOBAL"
-            })
-            YIELD path
-            WITH path as p, nodes(path) AS elements
-            WITH p, elements[0] as s, elements[-1] as t
-            RETURN $(get_merged_properties(context))
-        """, process_output)
     end
 end
 
-function get_k_shortest_paths(context::ExecutionContext, connector::CypherConnector, source::Int, target::Int, k::Int, output::Vector{Path})
+function get_k_shortest_paths(context::ExecutionContext, connector::CypherConnector, source::Int, target::Int, k::Int, output::Vector{Path}, weight_property::Union{String, Nothing})
     @timeit context.profiler "get k shortest paths" begin
         count = 0
         total = 0
@@ -238,23 +265,44 @@ function get_k_shortest_paths(context::ExecutionContext, connector::CypherConnec
             end
             total += 1
         end
-        query_cypher(context.profiler, connector, """
-            MATCH (s)
-            WHERE id(s) = $source
-            MATCH (t)
-            WHERE id(t) = $target
-            CALL gds.shortestPath.yens.stream(
-                '$(connector.database)',
-                {
-                    sourceNode: s,
-                    targetNode: t,
-                    k: $k
-                }
-            )
-            YIELD sourceNode, targetNode, path
-            WITH path as p, gds.util.asNode(sourceNode) as s, gds.util.asNode(targetNode) as t
-            RETURN $(get_merged_properties(context, false))
-        """, process_output)
+        if !isnothing(weight_property)
+            query_cypher(context.profiler, connector, """
+                MATCH (s)
+                WHERE id(s) = $source
+                MATCH (t)
+                WHERE id(t) = $target
+                CALL gds.shortestPath.yens.stream(
+                    '$(connector.database)',
+                    {
+                        sourceNode: s,
+                        targetNode: t,
+                        k: $k,
+                        relationshipWeightProperty: '$(weight_property)'
+                    }
+                )
+                YIELD sourceNode, targetNode, path
+                WITH path as p, gds.util.asNode(sourceNode) as s, gds.util.asNode(targetNode) as t
+                RETURN $(get_merged_properties(context, false))
+            """, process_output)
+        else
+            query_cypher(context.profiler, connector, """
+                MATCH (s)
+                WHERE id(s) = $source
+                MATCH (t)
+                WHERE id(t) = $target
+                CALL gds.shortestPath.yens.stream(
+                    '$(connector.database)',
+                    {
+                        sourceNode: s,
+                        targetNode: t,
+                        k: $k
+                    }
+                )
+                YIELD sourceNode, targetNode, path
+                WITH path as p, gds.util.asNode(sourceNode) as s, gds.util.asNode(targetNode) as t
+                RETURN $(get_merged_properties(context, false))
+            """, process_output)
+        end
         return count, total
     end
 end

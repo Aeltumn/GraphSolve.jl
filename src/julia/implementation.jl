@@ -1,5 +1,5 @@
 # Implements instructions against Julia.
-function create_connector(backend::JuliaGraphBackend, settings::GraphSolveSettings)
+function create_connector(backend::JuliaGraphBackend, settings::GraphSolveSettings, instruction::PathInstruction)
     @timeit settings.profiler "read graph from csv" graph, nodes, node_properties, edge_properties = load_julia_graph(backend)
     return JuliaConnectorWrapper(graph, nodes, node_properties, edge_properties)
 end
@@ -219,7 +219,7 @@ function get_all_paths(context::ExecutionContext, connector::JuliaConnectorWrapp
     end
 end
 
-function get_shortest_paths(context::ExecutionContext, connector::JuliaConnectorWrapper, source::NodeSelector, target::NodeSelector, output::Vector{Path}, collection::Set{Path})
+function get_shortest_paths(context::ExecutionContext, connector::JuliaConnectorWrapper, source::NodeSelector, target::NodeSelector, output::Vector{Path}, collection::Set{Path}, weight_property::Union{String, Nothing})
     sources = filter_nodes(connector, source)
     targets = filter_nodes(connector, target)
 
@@ -255,7 +255,7 @@ function get_shortest_paths(context::ExecutionContext, connector::JuliaConnector
     end
 end
 
-function get_k_shortest_paths(context::ExecutionContext, connector::JuliaConnectorWrapper, source::Int, target::Int, k::Int, output::Vector{Path})
+function get_k_shortest_paths(context::ExecutionContext, connector::JuliaConnectorWrapper, source::Int, target::Int, k::Int, output::Vector{Path}, weight_property::Union{String, Nothing})
     @timeit context.profiler "yen's k shortest paths" begin
         return process_paths(context, connector, source, target, output, nothing, () -> yen_k_shortest_paths(connector.graph, source + 1, target + 1, weights(connector.graph), k).paths)
     end

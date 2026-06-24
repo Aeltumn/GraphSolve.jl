@@ -25,6 +25,7 @@ function define_bandwidth_constrained_graph(backend::GraphBackend, settings::Gra
         paths,
         1.0,
         Maximize,
+        true,
         Hour(1),
         begin
             min(

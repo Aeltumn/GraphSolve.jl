@@ -19,6 +19,7 @@ mutable struct PathInstruction <: Instruction
     target::NodeSelector
     unique::Bool
     include_edges::Bool
+    weight_property::Union{String, Nothing}
     constraints::Vector{PathConstraint}
     optimal::Union{OptimalDefinition, Nothing}
 end

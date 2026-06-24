@@ -37,7 +37,7 @@ end
 
     Creates a new connector based on the backend type.
 """
-function create_connector(backend::GraphBackend, settings::GraphSolveSettings)
+function create_connector(backend::GraphBackend, settings::GraphSolveSettings, instruction::PathInstruction)
     error("Backend not fully implemented")
 end
 
@@ -82,7 +82,7 @@ end
 
     Executes a query to fetch the shortest paths between the given sources and targets.
 """
-function get_shortest_paths(context::ExecutionContext, connector::Connector, source::NodeSelector, target::NodeSelector, output::Vector{Path}, collection::Set{Path})
+function get_shortest_paths(context::ExecutionContext, connector::Connector, source::NodeSelector, target::NodeSelector, output::Vector{Path}, collection::Set{Path}, weight_property::Union{String, Nothing})
     error("Backend not fully implemented")
 end
 
@@ -91,7 +91,7 @@ end
 
     Executes a query to fetch the k shortest paths between the given source and target node.
 """
-function get_k_shortest_paths(context::ExecutionContext, connector::Connector, source::Int, target::Int, k::Int, output::Vector{Path})
+function get_k_shortest_paths(context::ExecutionContext, connector::Connector, source::Int, target::Int, k::Int, output::Vector{Path}, weight_property::Union{String, Nothing})
     error("Backend not fully implemented")
 end
 

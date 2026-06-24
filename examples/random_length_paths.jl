@@ -18,6 +18,7 @@ function define_random_length_paths_graph(backend::GraphBackend, settings::Graph
         paths,
         1.0,
         Maximize,
+        true,
         Hour(1),
         begin
             # The optimal solution assigns every source.

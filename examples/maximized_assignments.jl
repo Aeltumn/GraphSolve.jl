@@ -22,6 +22,7 @@ function define_maximized_assignments_graph(k, backend::GraphBackend, settings::
         paths,
         1.0,
         Maximize,
+        false,
         Hour(1),
         begin
             # The optimal solution assigns every destination maximally, assuming there's enough sources.
