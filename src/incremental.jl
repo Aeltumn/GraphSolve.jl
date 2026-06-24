@@ -22,7 +22,7 @@ end
     Runs constraint solving with the current paths contents and returns whether a good-enough score
     has been found.
 """
-function has_finished_search(context::ExecutionContext, state::IncrementalState)
+function has_finished_search(context::ExecutionContext, state::IncrementalState, remaining)
     @timeit context.profiler "check if search completed" begin 
         # Run the constraint solver, determine the current score and determine if it's within
         # the allowed bounds to stop the algorithm.
@@ -60,7 +60,7 @@ function has_finished_search(context::ExecutionContext, state::IncrementalState)
         end
 
         # Log for every iteration so there's some progress tracker
-        @info "Finished constraint solving iteration with $(length(copy)) paths out of $(length(state.candidate_paths)) for a score of $(score)..."
+        @info "Finished constraint solving iteration with $(length(copy)) paths out of $(length(state.candidate_paths)) for a score of $(score) with $remaining remaining..."
         
         # If this instruction doesn't rely on edges, never iterate as there is nothing to find!
         if !context.instruction.include_edges
@@ -103,7 +103,7 @@ function incremental_path_search(context::ExecutionContext, connector::Connector
     options = Dict{Tuple{Int, Int}, PathOption}()
     state = IncrementalState(problem_instruction, candidate_paths, nothing, nothing, nothing, options, sources, destinations)
     @info "Running first verification with $(length(candidate_paths)) candidates and a collection of $(length(collection)) pairs"
-    if has_finished_search(context, state)
+    if has_finished_search(context, state, length(collection))
         return
     end
 
@@ -184,6 +184,12 @@ function incremental_path_search(context::ExecutionContext, connector::Connector
                     delete!(options, (candidate.src, candidate.dst))
                 end
 
+                # If paths are independent we only need to find a single path
+                # before we can stop trying this pair for options.
+                if !context.instruction.optimal.dependent_paths && new_paths > 0
+                    delete!(options, (candidate.src, candidate.dst))
+                end
+
                 # Never fetch more than the maximum paths!
                 if new_k >= context.settings.max_k
                     delete!(options, (candidate.src, candidate.dst))
@@ -206,7 +212,7 @@ function incremental_path_search(context::ExecutionContext, connector::Connector
 
         # Run constraint solving with new candidates and find a valid solution to the problem
         added_paths = 0
-        if has_finished_search(context, state)
+        if has_finished_search(context, state, length(options))
             return
         end
     end
@@ -214,7 +220,7 @@ function incremental_path_search(context::ExecutionContext, connector::Connector
     # Run constraint solving one more time and return the best result!
     if added_paths > 0
         fetch_all_properties(context, connector, candidate_paths)
-        if has_finished_search(context, state)
+        if has_finished_search(context, state, 0)
             return
         end
     end

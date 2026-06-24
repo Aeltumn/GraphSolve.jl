@@ -26,6 +26,7 @@ function define_transport_routes_graph(backend::GraphBackend, settings::GraphSol
         begin
             # A solution is optimal if it includes every eligible source!
             linked_sources = get_source_nodes(paths)
+            @info "Linked up $(length(linked_sources)) out of $(length(sources))"
             all(it -> it ∈ linked_sources, sources)
         end
     )

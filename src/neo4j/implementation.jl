@@ -45,6 +45,7 @@ function fetch_node_properties(profiler::TimerOutput, connector::CypherConnector
                 subdict[instruction.name] = value
             end
         end
+        return false
     end
     query_cypher(profiler, connector, "MATCH (n) WHERE id(n) IN [$(join(nodes, ","))] RETURN $(join(properties, ", "))", process_node_row)
 end
@@ -77,6 +78,7 @@ function fetch_edge_properties(profiler::TimerOutput, connector::CypherConnector
                 subdict[instruction.name] = value
             end
         end
+        return false
     end
     query_cypher(profiler, connector, """
         WITH [
@@ -114,6 +116,7 @@ function perform_node_pre_fetch(context::ExecutionContext, connector::CypherConn
             sourceNode = row_values[1]
             push!(source_list, sourceNode)
             process_properties(context, context.source_properties_instructions, nothing, sourceNode, nothing, 2, row_values)
+            return false
         end
         query_cypher(context.profiler, connector, """
             MATCH $(source_query.select)
@@ -151,6 +154,7 @@ function perform_node_pre_fetch(context::ExecutionContext, connector::CypherConn
             targetNode = row_values[1]
             push!(target_list, targetNode)
             process_properties(context, nothing, context.target_properties_instructions, nothing, targetNode, 2, row_values)
+            return false
         end
         query_cypher(context.profiler, connector, """
             MATCH $(target_query.select)
@@ -172,6 +176,7 @@ function get_all_paths(context::ExecutionContext, connector::CypherConnector, so
     @timeit context.profiler "get all paths" begin
         function process_output(row_values)
             process_output_row(context, context.instruction.output, row_values, true, nothing)
+            return false
         end
         if context.settings.all_paths_algorithm == Cypher
             # Bake everything into the pre-conditions in this
@@ -217,6 +222,7 @@ function get_shortest_paths(context::ExecutionContext, connector::CypherConnecto
             # property which is required to get accurate shortest paths.
             function process_output_false(row_values)
                 process_output_row(context, output, row_values, false, collection)
+                return false
             end
             query_cypher(context.profiler, connector, """
                 $(as_query_variable(target, "target"))
@@ -236,6 +242,7 @@ function get_shortest_paths(context::ExecutionContext, connector::CypherConnecto
         else
             function process_output_true(row_values)
                 process_output_row(context, output, row_values, true, collection)
+                return false
             end
             query_cypher(context.profiler, connector, """
                 $(as_query_variable(target, "target"))
@@ -260,10 +267,17 @@ function get_k_shortest_paths(context::ExecutionContext, connector::CypherConnec
         count = 0
         total = 0
         function process_output(row_values)
-            if process_output_row(context, output, row_values, false, nothing)
+            total += 1
+
+            # If we only need one path because they are not dependent then we stop returning after
+            # the first valid answer, we do this to save on constraint solving time by not including
+            # paths that will not be picked.
+            if !context.instruction.optimal.dependent_paths && count > 0
+                return true
+            elseif process_output_row(context, output, row_values, false, nothing)
                 count += 1
             end
-            total += 1
+            return false
         end
         if !isnothing(weight_property)
             query_cypher(context.profiler, connector, """

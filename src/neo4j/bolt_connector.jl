@@ -36,7 +36,13 @@ function query_cypher(profiler::TimerOutput, connector::BoltNeo4jConnector, quer
                     for i in 1:len
                         row[i] = pyconvert(Any, values[i])
                     end
-                    process_row(row)
+
+                    # Allow returning to end the query early!
+                    if process_row(row)
+                        result.consume()
+                        session.close()
+                        return
+                    end
                 end
             end
         end
