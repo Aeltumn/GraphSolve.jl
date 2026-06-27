@@ -80,7 +80,7 @@ struct GraphSolveSettings
 end
 
 # Define a default variant with all the best options!
-GraphSolveSettings() = GraphSolveSettings(IncrementalPathSearch, Cypher, true, true, true, true, true, SCIPSolver, 50, 1000, 10000, 50000, TimerOutput())
+GraphSolveSettings() = GraphSolveSettings(IncrementalPathSearch, Cypher, true, true, true, true, true, SCIPSolver, 50, 1000, 100000, 500000, TimerOutput())
 
 """
     PathConstraint

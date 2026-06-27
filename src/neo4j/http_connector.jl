@@ -17,8 +17,8 @@ function determine_connection_headers(backend::Neo4jBackend)::Dict{String, Strin
 end
 
 function query_cypher(profiler::TimerOutput, connector::HttpNeo4jConnector, query, process_row)
-    display_query = strip(replace(replace(query, "\n" => " "), r"\s{2,}" => " "))
-    @timeit profiler "query $(display_query)" begin
+    # display_query = strip(replace(replace(query, "\n" => " "), r"\s{2,}" => " "))
+    @timeit profiler "execute query" begin
         @timeit profiler "serialize query" body = JSON3.write(Dict("statements" => [Dict("statement" => query)]))
         @timeit profiler "run query" resp = HTTP.post(connector.url, headers=connector.headers, body=body, readtimeout=0)
 
@@ -46,7 +46,9 @@ function query_cypher(profiler::TimerOutput, connector::HttpNeo4jConnector, quer
             end
 
             for row in data["results"][1]["data"]
-                process_row(row["row"])
+                if process_row(row["row"])
+                    break
+                end
             end
         end
     end

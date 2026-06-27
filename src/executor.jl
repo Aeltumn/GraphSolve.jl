@@ -1,5 +1,59 @@
 # Implements the logic for executing solvable graphs.
 """
+    get_query_conditions
+
+    Returns the query conditions with pushed down query constraints.
+"""
+function get_query_conditions(context::ExecutionContext, supports_edge_properties::Bool=true)
+    conditions = Vector{String}()
+    edgeConstraints = Vector{String}()
+    nodeConstraints = Vector{String}()
+
+    if context.settings.push_down_constraints
+        for constraint in context.source_constraints
+            if isnothing(constraint.cypher)
+                continue
+            end
+            push!(conditions, constraint.cypher)
+        end
+        for constraint in context.target_constraints
+            if isnothing(constraint.cypher)
+                continue
+            end
+            push!(conditions, constraint.cypher)
+        end
+        for constraint in context.source_target_constraints
+            if isnothing(constraint.cypher)
+                continue
+            end
+            push!(conditions, constraint.cypher)
+        end
+        if supports_edge_properties
+            for constraint in context.edge_constraints
+                if isnothing(constraint.cypher)
+                    continue
+                end
+                push!(edgeConstraints, constraint.cypher)
+            end
+        end
+        for constraint in context.node_constraints
+            if isnothing(constraint.cypher)
+                continue
+            end
+            push!(nodeConstraints, constraint.cypher)
+        end
+    end
+
+    if length(edgeConstraints) > 0
+        push!(conditions, "ALL(e IN relationships(p) $(merge_conditions(edgeConstraints)))")
+    end
+    if length(nodeConstraints) > 0
+        push!(conditions, "ALL(n IN nodes(p) $(merge_conditions(nodeConstraints)))")
+    end
+    return conditions
+end
+
+"""
     get_merged_properties
 
     Returns the merged properties string from the context.
@@ -93,7 +147,7 @@ end
 
     Processes one output row from a query with all properties baked in.
 """
-function process_output_row(context::ExecutionContext, target::Vector{Path}, row_values, supports_edge_properties::Bool, collection::Union{Set{Path}, Nothing})
+function process_output_row(context::ExecutionContext, target::Vector{Path}, row_values, supports_edge_properties::Bool, baked_constraints::Bool, collection::Union{Set{Path}, Nothing})
     # Extract the node ids
     sourceNode = row_values[1]
     targetNode = row_values[2]
@@ -112,16 +166,25 @@ function process_output_row(context::ExecutionContext, target::Vector{Path}, row
 
     # Filter based on non-edge constraints after we've extracted properties
     for constraint in context.source_constraints
+        if baked_constraints && !isnothing(constraint.cypher)
+            continue
+        end
         if !evaluate_constraint(constraint, sourceNode, nothing, nothing, nothing, nothing, nothing)
             return false
         end
     end
     for constraint in context.target_constraints
+        if baked_constraints && !isnothing(constraint.cypher)
+            continue
+        end
         if !evaluate_constraint(constraint, nothing, targetNode, nothing, nothing, nothing, nothing)
             return false
         end
     end
     for constraint in context.source_target_constraints
+        if baked_constraints && !isnothing(constraint.cypher)
+            continue
+        end
         if !evaluate_constraint(constraint, sourceNode, targetNode, nothing, nothing, nothing, nothing)
             return false
         end
@@ -159,6 +222,9 @@ function process_output_row(context::ExecutionContext, target::Vector{Path}, row
 
                 # Reject path based on edge constraints after resolving edge variables
                 for constraint in context.node_constraints
+                    if baked_constraints && !isnothing(constraint.cypher)
+                        continue
+                    end
                     if !evaluate_constraint(constraint, sourceNode, targetNode, node, nothing, nothing, nothing)
                         if isnothing(collection)
                             return false
@@ -209,6 +275,9 @@ function process_output_row(context::ExecutionContext, target::Vector{Path}, row
 
                     # Reject path based on edge constraints after resolving edge variables
                     for constraint in context.edge_constraints
+                        if baked_constraints && !isnothing(constraint.cypher)
+                            continue
+                        end
                         if !evaluate_constraint(constraint, sourceNode, targetNode, nothing, nothing, edge, nothing)
                             if isnothing(collection)
                                 return false
@@ -362,15 +431,15 @@ end
 
     Fetches all properties for the given nodes if unfetched.
 """
-function fetch_all_node_properties(context::ExecutionContext, connector::Connector, sources::Union{Vector{Int}, Nothing}, targets::Union{Vector{Int}, Nothing}, nodes::Union{Vector{Int}, Nothing})
+function fetch_all_node_properties(context::ExecutionContext, connector::Connector, sources::Union{Set{Int}, Nothing}, targets::Union{Set{Int}, Nothing}, nodes::Union{Set{Int}, Nothing})
     @timeit context.profiler "fetch all node properties" begin
         # If requested, run separate simultaneous queries to determine properties without
         # duplicate data as we fetch a lot of paths
         tasks = Vector{Task}()
-        if length(sources) > 0 && length(context.source_properties_instructions) > 0
+        if !isnothing(sources) && length(sources) > 0 && length(context.source_properties_instructions) > 0
             push!(
                 tasks,
-                @async begin
+                Threads.@spawn begin
                     new_nodes = filter(it -> it ∉ context.fetched_sources, sources)
                     union!(context.fetched_sources, new_nodes)
                     if length(new_nodes) > 0
@@ -379,10 +448,10 @@ function fetch_all_node_properties(context::ExecutionContext, connector::Connect
                 end
             )
         end
-        if length(targets) > 0 && length(context.target_properties_instructions) > 0
+        if !isnothing(targets) && length(targets) > 0 && length(context.target_properties_instructions) > 0
             push!(
                 tasks,
-                @async begin
+                Threads.@spawn begin
                     new_nodes = filter(it -> it ∉ context.fetched_targets, targets)
                     union!(context.fetched_targets, new_nodes)
                     if length(new_nodes) > 0
@@ -391,10 +460,10 @@ function fetch_all_node_properties(context::ExecutionContext, connector::Connect
                 end
             )
         end
-        if length(nodes) > 0 && length(context.node_properties_instructions) > 0
+        if !isnothing(nodes) && length(nodes) > 0 && length(context.node_properties_instructions) > 0
             push!(
                 tasks,
-                @async begin
+                Threads.@spawn begin
                     new_nodes = filter(it -> it ∉ context.fetched_nodes, nodes)
                     union!(context.fetched_nodes, new_nodes)
                     if length(new_nodes) > 0
@@ -421,7 +490,7 @@ end
 
     Fetches all properties for the given edges if unfetched.
 """
-function fetch_all_node_properties(context::ExecutionContext, connector::Connector, edges::Vector{Edge})
+function fetch_all_edge_properties(context::ExecutionContext, connector::Connector, edges::Set{Edge})
     @timeit context.profiler "fetch all edge properties" begin
         if length(edges) > 0 && length(context.edge_properties_instructions) > 0
             new_edges = filter(it -> it ∉ context.fetched_edges, edges)
@@ -448,7 +517,7 @@ function fetch_all_properties(context::ExecutionContext, connector::Connector, p
         if length(context.source_properties_instructions) > 0
             push!(
                 tasks,
-                @async begin
+                Threads.@spawn begin
                     all_nodes = get_source_nodes(paths)
                     new_nodes = filter(it -> it ∉ context.fetched_sources, all_nodes)
                     union!(context.fetched_sources, new_nodes)
@@ -461,7 +530,7 @@ function fetch_all_properties(context::ExecutionContext, connector::Connector, p
         if length(context.target_properties_instructions) > 0
             push!(
                 tasks,
-                @async begin
+                Threads.@spawn begin
                     all_nodes = get_destination_nodes(paths)
                     new_nodes = filter(it -> it ∉ context.fetched_targets, all_nodes)
                     union!(context.fetched_targets, new_nodes)
@@ -474,7 +543,7 @@ function fetch_all_properties(context::ExecutionContext, connector::Connector, p
         if length(context.node_properties_instructions) > 0
             push!(
                 tasks,
-                @async begin
+                Threads.@spawn begin
                     all_nodes = get_unique_nodes(paths)
                     new_nodes = filter(it -> it ∉ context.fetched_nodes, all_nodes)
                     union!(context.fetched_nodes, new_nodes)
@@ -487,7 +556,7 @@ function fetch_all_properties(context::ExecutionContext, connector::Connector, p
         if length(context.edge_properties_instructions) > 0
             push!(
                 tasks,
-                @async begin
+                Threads.@spawn begin
                     all_edges = get_unique_edges(paths)
                     new_edges = filter(it -> it ∉ context.fetched_edges, all_edges)
                     union!(context.fetched_edges, new_edges)

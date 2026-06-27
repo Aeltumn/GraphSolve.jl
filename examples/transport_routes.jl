@@ -5,7 +5,7 @@ function define_transport_routes_graph(backend::GraphBackend, settings::GraphSol
     graph = SolvableGraph(backend)
 
     # Define a query to find the paths
-    paths = find_paths!(graph, LabelNodeSelector("Source"), LabelNodeSelector("Destination"), true, true, "weight")
+    paths = find_paths!(graph, LabelNodeSelector("Source"), LabelNodeSelector("Target"), true, true, "weight")
 
     # Define which properties to extract
     node_properties = NodePropertyDict()
@@ -14,7 +14,7 @@ function define_transport_routes_graph(backend::GraphBackend, settings::GraphSol
     extract_edge_properties!(graph, paths, edge_properties, "weight")
     
     # Ensure every route contains a high value node
-    @apply_path_constraint(graph, paths, any(n -> node_properties[n]["random"] >= 80, nodes))
+    @apply_path_constraint(graph, paths, any(n -> node_properties[n]["random"] >= 90, nodes))
     
     # Define the optimal value of the problem
     @optimal(

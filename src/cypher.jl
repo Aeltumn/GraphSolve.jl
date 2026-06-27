@@ -96,9 +96,10 @@ function ref_to_cypher(expr::Expr)
         idx = obj.args[2]
         var = idx == :src ? "s" :
             idx == :dst ? "t" :
-            idx == :edge ? "e" :
+            idx == :edge || idx == :edges ? "e" :
+            idx == :node || idx == :nodes ? "n" :
             error("Unknown node variable $(idx)")
-        return "$var.$key", idx == :edge
+        return "$var.$key"
     end
 
     error("Unsupported expression reference")
@@ -107,20 +108,20 @@ end
 function call_to_cypher(expr::Expr)
     operator = expr.args[1]
     if haskey(OPERATOR_MAPPINGS, operator)
-        lhs, ie1 = expr_to_cypher(expr.args[2])
-        rhs, ie2 = expr_to_cypher(expr.args[3])
-        return "($lhs $(OPERATOR_MAPPINGS[operator]) $rhs)", ie1 || ie2
+        lhs = expr_to_cypher(expr.args[2])
+        rhs = expr_to_cypher(expr.args[3])
+        return "($lhs $(OPERATOR_MAPPINGS[operator]) $rhs)"
     end
     error("Unsupported operator $operator")
 end
 
 function expr_to_cypher(expr)
      if expr isa Symbol
-        return symbol_to_cypher(expr), false
+        return symbol_to_cypher(expr)
     elseif expr isa String
-        return repr(expr), false
+        return repr(expr)
     elseif expr isa Number
-        return string(expr), false
+        return string(expr)
     elseif expr isa Expr
         if expr.head == :call
             return call_to_cypher(expr)
@@ -141,18 +142,8 @@ end
 """
 function convert_to_cypher(expr::Expr)
     try
-        body, includes_edges = expr_to_cypher(expr)
-
-        # If there's an edge being referenced the entire constraint
-        # has to apply to the entire path! We require that the user splits
-        # up constraints into separate statements and not mix them.
-        if includes_edges
-            return "ALL(e IN relationships(p) WHERE $(body))"
-        else
-            return body
-        end
+        return expr_to_cypher(expr)
     catch err
-        # For testing, show error!
         # showerror(stdout, err, catch_backtrace())
         return nothing
     end

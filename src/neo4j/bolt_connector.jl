@@ -20,8 +20,8 @@ function create_bolt_connector(backend::Neo4jBackend)
 end
 
 function query_cypher(profiler::TimerOutput, connector::BoltNeo4jConnector, query, process_row)
-    display_query = strip(replace(replace(query, "\n" => " "), r"\s{2,}" => " "))
-    @timeit profiler "query $(display_query)" begin
+    # display_query = strip(replace(replace(query, "\n" => " "), r"\s{2,}" => " "))
+    @timeit profiler "execute query" begin
         pywith(connector.driver.session(database = connector.database)) do session
             @timeit profiler "start query" result = session.run(query)
             if isnothing(process_row)

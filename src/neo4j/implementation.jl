@@ -1,5 +1,5 @@
 # Implements instructions against Neo4j.
-function create_connector(backend::Neo4jBackend, settings::GraphSolveSettings, instruction::PathInstruction)
+function create_connector(backend::Neo4jBackend, settings::GraphSolveSettings, edge_properties::Set{String})
     if backend.bolt
         connector = create_bolt_connector(backend)
     else
@@ -9,8 +9,8 @@ function create_connector(backend::Neo4jBackend, settings::GraphSolveSettings, i
     # Project the database into GDS if we want to use shortest path searching
     if settings.mode == IncrementalPathSearch
         query_cypher(settings.profiler, connector, "CALL gds.graph.drop('$(connector.database)', false)", nothing)
-        if !isnothing(instruction.weight_property)
-            query_cypher(settings.profiler, connector, "CALL gds.graph.project('$(connector.database)', '*', {ALL: { type: '*', properties: '$(instruction.weight_property)'}})", nothing) 
+        if length(edge_properties) > 0
+            query_cypher(settings.profiler, connector, "CALL gds.graph.project('$(connector.database)', '*', {ALL: { type: '*', properties: ['$(join(edge_properties, "', '"))']}})", nothing) 
         else
             query_cypher(settings.profiler, connector, "CALL gds.graph.project('$(connector.database)', '*', '*')", nothing) 
         end
@@ -175,28 +175,30 @@ end
 function get_all_paths(context::ExecutionContext, connector::CypherConnector, source::NodeSelector, target::NodeSelector)
     @timeit context.profiler "get all paths" begin
         function process_output(row_values)
-            process_output_row(context, context.instruction.output, row_values, true, nothing)
+            process_output_row(context, context.instruction.output, row_values, true, true, nothing)
             return false
         end
         if context.settings.all_paths_algorithm == Cypher
             # Bake everything into the pre-conditions in this
             # mode as we match against the path directly!
-            pre_conditions = Vector{String}()
+            conditions = Vector{String}()
             from = as_query(source, "s")
             to = as_query(target, "t")
             if !isnothing(from.conditions)
-                append!(pre_conditions, from.conditions)
+                append!(conditions, from.conditions)
             end
             if !isnothing(to.conditions)
-                append!(pre_conditions, to.conditions)
+                append!(conditions, to.conditions)
             end
+            append!(conditions, get_query_conditions(context))
 
             query_cypher(context.profiler, connector, """
                 MATCH p = $(from.select)-[*]->$(to.select)
-                $(merge_conditions(pre_conditions))
+                $(merge_conditions(conditions))
                 RETURN $(get_merged_properties(context))
             """, process_output)
         elseif context.settings.all_paths_algorithm == ApocAll
+            conditions = get_query_conditions(context)
             query_cypher(context.profiler, connector, """
                 $(as_query_variable(target, "target"))
                 MATCH $(flatten(as_query(source, "s")))
@@ -207,6 +209,7 @@ function get_all_paths(context::ExecutionContext, connector::CypherConnector, so
                 YIELD path
                 WITH path as p, nodes(path) AS elements
                 WITH p, elements[0] as s, elements[-1] as t
+                $(merge_conditions(conditions))
                 RETURN $(get_merged_properties(context))
             """, process_output)
         else
@@ -221,7 +224,7 @@ function get_shortest_paths(context::ExecutionContext, connector::CypherConnecto
             # GDS is slower and doesn't return edge properties, but it does support a weight
             # property which is required to get accurate shortest paths.
             function process_output_false(row_values)
-                process_output_row(context, output, row_values, false, collection)
+                process_output_row(context, output, row_values, true, false, collection)
                 return false
             end
             query_cypher(context.profiler, connector, """
@@ -237,11 +240,11 @@ function get_shortest_paths(context::ExecutionContext, connector::CypherConnecto
                 )
                 YIELD sourceNode, targetNode, path
                 WITH path as p, gds.util.asNode(sourceNode) as s, gds.util.asNode(targetNode) as t
-                RETURN $(get_merged_properties(context, false))
+                RETURN $(get_merged_properties(context))
             """, process_output_false)
         else
             function process_output_true(row_values)
-                process_output_row(context, output, row_values, true, collection)
+                process_output_row(context, output, row_values, true, false, collection)
                 return false
             end
             query_cypher(context.profiler, connector, """
@@ -264,6 +267,7 @@ end
 
 function get_k_shortest_paths(context::ExecutionContext, connector::CypherConnector, source::Int, target::Int, k::Int, output::Vector{Path}, weight_property::Union{String, Nothing})
     @timeit context.profiler "get k shortest paths" begin
+        conditions = get_query_conditions(context, false)
         count = 0
         total = 0
         function process_output(row_values)
@@ -274,7 +278,7 @@ function get_k_shortest_paths(context::ExecutionContext, connector::CypherConnec
             # paths that will not be picked.
             if !context.instruction.optimal.dependent_paths && count > 0
                 return true
-            elseif process_output_row(context, output, row_values, false, nothing)
+            elseif process_output_row(context, output, row_values, false, true, nothing)
                 count += 1
             end
             return false
@@ -296,6 +300,7 @@ function get_k_shortest_paths(context::ExecutionContext, connector::CypherConnec
                 )
                 YIELD sourceNode, targetNode, path
                 WITH path as p, gds.util.asNode(sourceNode) as s, gds.util.asNode(targetNode) as t
+                $(merge_conditions(conditions))
                 RETURN $(get_merged_properties(context, false))
             """, process_output)
         else
@@ -314,6 +319,7 @@ function get_k_shortest_paths(context::ExecutionContext, connector::CypherConnec
                 )
                 YIELD sourceNode, targetNode, path
                 WITH path as p, gds.util.asNode(sourceNode) as s, gds.util.asNode(targetNode) as t
+                $(merge_conditions(conditions))
                 RETURN $(get_merged_properties(context, false))
             """, process_output)
         end

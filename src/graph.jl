@@ -23,10 +23,11 @@ mutable struct JuliaGraphBackend <: GraphBackend
     nodes::String
     edges::String
     connector::Union{JuliaConnectorWrapper, Nothing}
+    edge_properties::Union{Set{String}, Nothing}
 end
 
-JuliaGraphBackend(folder::String) = JuliaGraphBackend("$(folder)/nodes.csv", "$(folder)/edges.csv", nothing)
-JuliaGraphBackend(nodes::String, edges::String) = JuliaGraphBackend(nodes, edges, nothing)
+JuliaGraphBackend(folder::String) = JuliaGraphBackend("$(folder)/nodes.csv", "$(folder)/edges.csv", nothing, nothing)
+JuliaGraphBackend(nodes::String, edges::String) = JuliaGraphBackend(nodes, edges, nothing, nothing)
 
 """
     Neo4jBackend
@@ -44,9 +45,10 @@ mutable struct Neo4jBackend <: GraphBackend
     database::String
     bolt::Bool
     connector::Union{CypherConnector, Nothing}
+    edge_properties::Union{Set{String}, Nothing}
 end
 
-Neo4jBackend(url::String, user::String, password::String, database::String, bolt::Bool) = Neo4jBackend(url, user, password, database, bolt, nothing)
+Neo4jBackend(url::String, user::String, password::String, database::String, bolt::Bool) = Neo4jBackend(url, user, password, database, bolt, nothing, nothing)
 
 """
     SolvableGraph

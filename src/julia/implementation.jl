@@ -1,7 +1,7 @@
 # Implements instructions against Julia.
-function create_connector(backend::JuliaGraphBackend, settings::GraphSolveSettings, instruction::PathInstruction)
-    @timeit settings.profiler "read graph from csv" graph, nodes, node_properties, edge_properties = load_julia_graph(backend)
-    return JuliaConnectorWrapper(graph, nodes, node_properties, edge_properties)
+function create_connector(backend::JuliaGraphBackend, settings::GraphSolveSettings, edge_properties::Set{String})
+    @timeit settings.profiler "read graph from csv" graph, nodes, node_props, edge_props = load_julia_graph(backend)
+    return JuliaConnectorWrapper(graph, nodes, node_props, edge_props)
 end
 
 function filter_nodes(connector::JuliaConnectorWrapper, selector::NodeSelector)
@@ -64,7 +64,7 @@ function perform_node_pre_fetch(context::ExecutionContext, connector::JuliaConne
     end
 end
 
-function process_path(context::ExecutionContext, sourceNode::Int, targetNode::Int, output::Vector{Path}, collection::Union{Set{Path}, Nothing}, path)
+function process_path(context::ExecutionContext, connector::JuliaConnectorWrapper, sourceNode::Int, targetNode::Int, output::Vector{Path}, collection::Union{Set{Path}, Nothing}, path)
     # Ignore paths of invalid size!
     if length(path) < 2
         return false
@@ -78,7 +78,7 @@ function process_path(context::ExecutionContext, sourceNode::Int, targetNode::In
     for vertex in path
         # Reject path based on node constraints after resolving node variables
         if !isempty(context.node_constraints)
-            fetch_all_node_properties(context, connector, nothing, nothing, [vertex])
+            fetch_all_node_properties(context, connector, nothing, nothing, Set{Int}([vertex]))
             for constraint in context.node_constraints
                 if !evaluate_constraint(constraint, sourceNode, targetNode, vertex, nothing, nothing, nothing)
                     if isnothing(collection)
@@ -98,7 +98,7 @@ function process_path(context::ExecutionContext, sourceNode::Int, targetNode::In
 
             # Reject path based on edge constraints after resolving edge variables
             if !isempty(context.edge_constraints)
-                fetch_all_edge_properties(context, connector, [edge])
+                fetch_all_edge_properties(context, connector, Set{Edge}([edge]))
                 for constraint in context.edge_constraints
                     if !evaluate_constraint(constraint, sourceNode, targetNode, nothing, nothing, edge, nothing)
                         if isnothing(collection)
@@ -147,7 +147,7 @@ end
 
 function process_paths(context::ExecutionContext, connector::JuliaConnectorWrapper, sourceNode::Int, targetNode::Int, output::Vector{Path}, collection::Union{Set{Path}, Nothing}, func)
     # Fetch source/target if requested
-    fetch_all_node_properties(context, connector, [sourceNode], [targetNode], nothing)
+    fetch_all_node_properties(context, connector, Set{Int}([sourceNode]), Set{Int}([targetNode]), nothing)
 
     # Filter based on non-edge constraints after we've extracted properties
     for constraint in context.source_constraints
@@ -177,7 +177,7 @@ function process_paths(context::ExecutionContext, connector::JuliaConnectorWrapp
     count = 0
     @timeit context.profiler "process paths" begin    
         for path in paths
-            if process_path(context, sourceNode, targetNode, output, collection, path)
+            if process_path(context, connector, sourceNode, targetNode, output, collection, path)
                 count += 1
             end
         end
@@ -196,7 +196,7 @@ function get_all_paths(context::ExecutionContext, connector::JuliaConnectorWrapp
             for t in targets
                 push!(
                     tasks,
-                    @async begin
+                    Threads.@spawn begin
                         @timeit context.profiler "all simple paths" begin
                             process_paths(context, connector, s, t, output, nothing, () -> collect(all_simple_paths(connector.graph, s + 1, t + 1)))
                         end
@@ -229,7 +229,7 @@ function get_shortest_paths(context::ExecutionContext, connector::JuliaConnector
         for s in sources
             push!(
                 tasks,
-                @async begin
+                Threads.@spawn begin
                     @timeit context.profiler "dijkstra's shortest paths" begin
                         sp = dijkstra_shortest_paths(connector.graph, s + 1)
                         for t in targets

@@ -37,7 +37,7 @@ end
 
     Creates a new connector based on the backend type.
 """
-function create_connector(backend::GraphBackend, settings::GraphSolveSettings, instruction::PathInstruction)
+function create_connector(backend::GraphBackend, settings::GraphSolveSettings, edge_properties::Set{String})
     error("Backend not fully implemented")
 end
 

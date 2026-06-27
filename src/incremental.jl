@@ -27,7 +27,9 @@ function has_finished_search(context::ExecutionContext, state::IncrementalState,
         # Run the constraint solver, determine the current score and determine if it's within
         # the allowed bounds to stop the algorithm.
         copy = Vector{Path}(state.candidate_paths)
+        @info "Running verification with $(length(copy)) candidates"
         score, variables = solve_constraints(context, state.problem_instruction, copy, state.best_variables)
+        @info "Finished constraint solving iteration with $(length(copy)) paths out of $(length(state.candidate_paths)) for a score of $(score) with $remaining remaining..."
 
         if context.instruction.optimal.mode == Minimize
             # Update the best score so far
@@ -58,9 +60,6 @@ function has_finished_search(context::ExecutionContext, state::IncrementalState,
                 end
             end
         end
-
-        # Log for every iteration so there's some progress tracker
-        @info "Finished constraint solving iteration with $(length(copy)) paths out of $(length(state.candidate_paths)) for a score of $(score) with $remaining remaining..."
         
         # If this instruction doesn't rely on edges, never iterate as there is nothing to find!
         if !context.instruction.include_edges
@@ -89,6 +88,7 @@ function incremental_path_search(context::ExecutionContext, connector::Connector
     collection = Set{Path}()
     candidate_paths = Vector{Path}()
     get_shortest_paths(context, connector, context.source, context.target, candidate_paths, collection, problem_instruction.path.weight_property)
+    @info "Found initial collection of $(length(collection)) pairs"
 
     # Step 1b: Fetch properties for newly added nodes & edges
     fetch_all_properties(context, connector, collection)
@@ -102,8 +102,7 @@ function incremental_path_search(context::ExecutionContext, connector::Connector
     # Step 3: Attempt to run constraint solving and end if we've reached the answers
     options = Dict{Tuple{Int, Int}, PathOption}()
     state = IncrementalState(problem_instruction, candidate_paths, nothing, nothing, nothing, options, sources, destinations)
-    @info "Running first verification with $(length(candidate_paths)) candidates and a collection of $(length(collection)) pairs"
-    if has_finished_search(context, state, length(collection))
+    if has_finished_search(context, state, "n/a")
         return
     end
 
@@ -162,6 +161,7 @@ function incremental_path_search(context::ExecutionContext, connector::Connector
 
             # Go through the first k selectables
             scheduled_paths = 0
+            tasks = Vector{Task}()
             for candidate in selectable
                 # Stop iterating when we reach the limit!
                 if scheduled_paths > context.settings.maximum_paths
@@ -175,19 +175,35 @@ function incremental_path_search(context::ExecutionContext, connector::Connector
 
                 # Find the k-shortest paths for this group
                 scheduled_paths += increment
+                if context.settings.use_async_scheduling
+                    push!(
+                        tasks,
+                        Threads.@spawn begin
+                            # Fetch the k-shortest paths from each path, if we find enough new paths we keep
+                            # it in the list to try find more in a future iteration!
+                            new_valid_paths, new_paths = get_k_shortest_paths(context, connector, candidate.src, candidate.dst, new_k, candidate_paths, problem_instruction.path.weight_property)
+                            added_paths += new_valid_paths
+                            if new_paths < (increment - 5)
+                                delete!(options, (candidate.src, candidate.dst))
+                            end
 
-                # Fetch the k-shortest paths from each path, if we find enough new paths we keep
-                # it in the list to try find more in a future iteration!
-                new_valid_paths, new_paths = get_k_shortest_paths(context, connector, candidate.src, candidate.dst, new_k, candidate_paths, problem_instruction.path.weight_property)
-                added_paths += new_valid_paths
-                if new_paths < (increment - 5)
-                    delete!(options, (candidate.src, candidate.dst))
-                end
-
-                # If paths are independent we only need to find a single path
-                # before we can stop trying this pair for options.
-                if !context.instruction.optimal.dependent_paths && new_paths > 0
-                    delete!(options, (candidate.src, candidate.dst))
+                            # If paths are independent we only need to find a single path
+                            # before we can stop trying this pair for options.
+                            if !context.instruction.optimal.dependent_paths && new_paths > 0
+                                delete!(options, (candidate.src, candidate.dst))
+                            end
+                        end
+                    )
+                else
+                    # Same code but sync!
+                    new_valid_paths, new_paths = get_k_shortest_paths(context, connector, candidate.src, candidate.dst, new_k, candidate_paths, problem_instruction.path.weight_property)
+                    added_paths += new_valid_paths
+                    if new_paths < (increment - 5)
+                        delete!(options, (candidate.src, candidate.dst))
+                    end
+                    if !context.instruction.optimal.dependent_paths && new_paths > 0
+                        delete!(options, (candidate.src, candidate.dst))
+                    end
                 end
 
                 # Never fetch more than the maximum paths!
@@ -195,6 +211,13 @@ function incremental_path_search(context::ExecutionContext, connector::Connector
                     delete!(options, (candidate.src, candidate.dst))
                 end
             end
+
+            # Await all tasks
+            @info "Scheduled $scheduled_paths paths to be found out in $(length(tasks)) tasks"
+            for task in tasks
+                wait(task)
+            end
+            @info "After all tasks $(length(selectable)) options remain"
 
             # If there were no tasks, break the loop!
             if scheduled_paths <= 0

@@ -185,10 +185,22 @@ end
     Queries the given [backend] to find all paths that match [instruction].
 """
 function execute_path_instruction(backend::GraphBackend, settings::GraphSolveSettings, instruction::PathInstruction, property_instructions::Set{Instruction}, problem_instructions::Set{ProblemInstruction})
+    # Determine all referenced edge properties
+    edge_properties = Set{String}()
+    if !isnothing(instruction.weight_property)
+        push!(edge_properties, instruction.weight_property)
+    end
+    for property in property_instructions
+        if property isa EdgePropertyInstruction
+            push!(edge_properties, property.name)
+        end
+    end
+    
     # Create a connector instance
     connector = backend.connector
-    if isnothing(connector)
-        connector = create_connector(backend, settings, instruction)
+    if isnothing(connector) || backend.edge_properties != edge_properties
+        connector = create_connector(backend, settings, edge_properties)
+        backend.edge_properties = edge_properties
         backend.connector = connector
     end
 
@@ -281,7 +293,7 @@ function execute!(graph::SolvableGraph, settings::GraphSolveSettings)
         for instruction in path_instructions
             push!(
                 tasks,
-                @async begin
+                Threads.@spawn begin
                     execute_path_instruction(graph.graph, settings, instruction, get!(property_instructions, instruction, Set{Instruction}()), get!(problem_instructions, instruction, Set{ProblemInstruction}()))
                 end
             )

@@ -22,7 +22,7 @@ function define_maximized_assignments_graph(backend::GraphBackend, settings::Gra
         Hour(1),
         begin
             # The optimal solution assigns every destination maximally, assuming there's enough sources.
-            score >= sum([node_properties[t]["random"] * node_properties[t]["max"] for t in destinations])
+            score >= sum([node_properties[t]["random"] * (node_properties[t]["max"] / 5) for t in destinations])
         end
     )
 
@@ -37,7 +37,7 @@ function define_maximized_assignments_graph(backend::GraphBackend, settings::Gra
 
         # Ensure destinations are not over-assigned
         for node in get_destination_nodes(paths)
-            max = get(node_properties[node], "max", typemax(Int64))
+            max = get(node_properties[node], "max", typemax(Int64)) / 5
             filtered_paths = map(it -> it.id, filter(it -> it.dst == node, paths))
             @constraint(model, sum(x[pid] for pid in filtered_paths) <= max)
         end
