@@ -190,32 +190,22 @@ function get_all_paths(context::ExecutionContext, connector::JuliaConnectorWrapp
     sources = filter_nodes(connector, source)
     targets = filter_nodes(connector, target)
     
-    if context.settings.use_async_scheduling
-        tasks = Vector{Task}()
-        for s in sources
-            for t in targets
-                push!(
-                    tasks,
-                    Threads.@spawn begin
-                        @timeit context.profiler "all simple paths" begin
-                            process_paths(context, connector, s, t, output, nothing, () -> collect(all_simple_paths(connector.graph, s + 1, t + 1)))
-                        end
+    tasks = Vector{Task}()
+    for s in sources
+        for t in targets
+            push!(
+                tasks,
+                @schedule_task context.settings begin
+                    @timeit context.profiler "all simple paths" begin
+                        process_paths(context, connector, s, t, output, nothing, () -> collect(all_simple_paths(connector.graph, s + 1, t + 1)))
                     end
-                )
-            end
-        end
-
-        for task in tasks
-            wait(task)
-        end
-    else
-        for s in sources
-            for t in targets
-                @timeit context.profiler "all simple paths" begin
-                    process_paths(context, connector, s, t, output, nothing, () -> collect(all_simple_paths(connector.graph, s + 1, t + 1)))
                 end
-            end
+            )
         end
+    end
+
+    for task in tasks
+        wait(task)
     end
 end
 
@@ -223,35 +213,23 @@ function get_shortest_paths(context::ExecutionContext, connector::JuliaConnector
     sources = filter_nodes(connector, source)
     targets = filter_nodes(connector, target)
 
-    if context.settings.use_async_scheduling
-        tasks = Vector{Task}()
-
-        for s in sources
-            push!(
-                tasks,
-                Threads.@spawn begin
-                    @timeit context.profiler "dijkstra's shortest paths" begin
-                        sp = dijkstra_shortest_paths(connector.graph, s + 1)
-                        for t in targets
-                            process_paths(context, connector, s, t, output, collection, () -> [collect(enumerate_paths(sp, t + 1))])
-                        end
+    tasks = Vector{Task}()
+    for s in sources
+        push!(
+            tasks,
+            @schedule_task context.settings begin
+                @timeit context.profiler "dijkstra's shortest paths" begin
+                    sp = dijkstra_shortest_paths(connector.graph, s + 1)
+                    for t in targets
+                        process_paths(context, connector, s, t, output, collection, () -> [collect(enumerate_paths(sp, t + 1))])
                     end
                 end
-            )
-        end
-
-        for task in tasks
-            wait(task)
-        end
-    else
-        for s in sources
-            @timeit context.profiler "dijkstra's shortest paths" begin
-                sp = dijkstra_shortest_paths(connector.graph, s + 1)
-                for t in targets
-                    process_paths(context, connector, s, t, output, collection, () -> [collect(enumerate_paths(sp, t + 1))])
-                end
             end
-        end
+        )
+    end
+
+    for task in tasks
+        wait(task)
     end
 end
 

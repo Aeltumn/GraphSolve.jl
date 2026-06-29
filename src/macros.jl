@@ -282,27 +282,20 @@ function execute!(graph::SolvableGraph, settings::GraphSolveSettings)
         end
     end
 
-    # Use settings to see if we can use async scheduling
-    if !settings.use_async_scheduling
-        for instruction in path_instructions
-            execute_path_instruction(graph.graph, settings, instruction, get!(property_instructions, instruction, Set{Instruction}()), get!(problem_instructions, instruction, Set{ProblemInstruction}()))
-        end
-    else
-        # Start executing instructions one-by-one
-        tasks = Vector{Task}()
-        for instruction in path_instructions
-            push!(
-                tasks,
-                Threads.@spawn begin
-                    execute_path_instruction(graph.graph, settings, instruction, get!(property_instructions, instruction, Set{Instruction}()), get!(problem_instructions, instruction, Set{ProblemInstruction}()))
-                end
-            )
-        end
+    # Start executing instructions one-by-one
+    tasks = Vector{Task}()
+    for instruction in path_instructions
+        push!(
+            tasks,
+            @schedule_task settings begin
+                execute_path_instruction(graph.graph, settings, instruction, get!(property_instructions, instruction, Set{Instruction}()), get!(problem_instructions, instruction, Set{ProblemInstruction}()))
+            end
+        )
+    end
 
-        # Wait for all instructions to complete
-        for task in tasks
-            wait(task)
-        end
+    # Wait for all instructions to complete
+    for task in tasks
+        wait(task)
     end
 end
 

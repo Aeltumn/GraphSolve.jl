@@ -128,3 +128,19 @@ Base.:(==)(a::Path, b::Path) = (
 )
 
 Base.hash(p::Path, h::UInt) = hash((p.src, p.dst, p.edges === nothing ? () : p.edges), h)
+
+"""
+    spawn_thread
+
+    Schedules a new task on a thread if async scheduling is enabled,
+    otherwise creates a main thread task.
+"""
+macro schedule_task(settings, expr)
+    quote
+        if $(esc(settings)).use_async_scheduling
+            Threads.@spawn $(esc(expr))
+        else
+            @async $(esc(expr))
+        end
+    end
+end

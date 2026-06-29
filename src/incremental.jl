@@ -175,36 +175,24 @@ function incremental_path_search(context::ExecutionContext, connector::Connector
 
                 # Find the k-shortest paths for this group
                 scheduled_paths += increment
-                if context.settings.use_async_scheduling
-                    push!(
-                        tasks,
-                        Threads.@spawn begin
-                            # Fetch the k-shortest paths from each path, if we find enough new paths we keep
-                            # it in the list to try find more in a future iteration!
-                            new_valid_paths, new_paths = get_k_shortest_paths(context, connector, candidate.src, candidate.dst, new_k, candidate_paths, problem_instruction.path.weight_property)
-                            added_paths += new_valid_paths
-                            if new_paths < (increment - 5)
-                                delete!(options, (candidate.src, candidate.dst))
-                            end
-
-                            # If paths are independent we only need to find a single path
-                            # before we can stop trying this pair for options.
-                            if !context.instruction.optimal.dependent_paths && new_paths > 0
-                                delete!(options, (candidate.src, candidate.dst))
-                            end
+                push!(
+                    tasks,
+                    @schedule_task context.settings begin
+                        # Fetch the k-shortest paths from each path, if we find enough new paths we keep
+                        # it in the list to try find more in a future iteration!
+                        new_valid_paths, new_paths = get_k_shortest_paths(context, connector, candidate.src, candidate.dst, new_k, candidate_paths, problem_instruction.path.weight_property)
+                        added_paths += new_valid_paths
+                        if new_paths < (increment - 5)
+                            delete!(options, (candidate.src, candidate.dst))
                         end
-                    )
-                else
-                    # Same code but sync!
-                    new_valid_paths, new_paths = get_k_shortest_paths(context, connector, candidate.src, candidate.dst, new_k, candidate_paths, problem_instruction.path.weight_property)
-                    added_paths += new_valid_paths
-                    if new_paths < (increment - 5)
-                        delete!(options, (candidate.src, candidate.dst))
+
+                        # If paths are independent we only need to find a single path
+                        # before we can stop trying this pair for options.
+                        if !context.instruction.optimal.dependent_paths && new_paths > 0
+                            delete!(options, (candidate.src, candidate.dst))
+                        end
                     end
-                    if !context.instruction.optimal.dependent_paths && new_paths > 0
-                        delete!(options, (candidate.src, candidate.dst))
-                    end
-                end
+                )
 
                 # Never fetch more than the maximum paths!
                 if new_k >= context.settings.max_k
