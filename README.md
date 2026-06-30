@@ -25,7 +25,7 @@ graph = SolvableGraph(Neo4jBackend("http://localhost:7474", "neo4j", "password",
 This graph can defined with your constraints and problem definition:
 ```julia
 # Define a query to find any paths from foo -> bar nodes
-paths = find_paths!(graph, AssignSourcesToDestinations,LabelNodeSelector("foo"), LabelNodeSelector("bar"), false)
+paths = find_paths!(graph, LabelNodeSelector("foo"), LabelNodeSelector("bar"), false, false)
 
 # Define which variables we want to involve in our constriants explicitly
 node_properties = NodePropertyDict()
@@ -38,20 +38,25 @@ extract_node_properties!(graph, paths, node_properties, Destination, "paths")
 @optimal(
     graph,
     paths,
-    # Try to find a solution that is within 1% of the optimal value!
-    0.99,
     # Maximize the value of the problem (should match the objective)
     Maximize,
     # Cap out at 1 hour of calculation time if we cannot find an optimal solution!
     Hour(1),
+    # Run constraint solving at most 4 times before quitting.
+    4,
     begin
-        # The maximum score is if every destination is maxed out!
-        sum([node_properties[t]["paths"] for t in destinations])
+        # This defines an early stopping condition for the solver, here
+        # if every destination is maxed out we can stop as there cannot
+        # be a better solution.
+        score >= sum([node_properties[t]["paths"] for t in destinations])
     end
 )
 
 # Define the JuMP model with custom constraints
 function configure(model, paths, x)
+    # Ensure that every source is used only once
+    require_sources_at_most_one_target(model, paths, x)
+
     # Ensure that the maximum of each destination node is not exceeded!
     for node in get_destination_nodes(paths)
         max = get(node_properties[node], "paths", typemax(Int64))
