@@ -30,6 +30,10 @@ mutable struct ExecutionContext
 
     source::NodeSelector
     target::NodeSelector
+
+    start_time
+    last_time
+    constraint_iteration
 end
 
 """

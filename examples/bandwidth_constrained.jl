@@ -26,6 +26,7 @@ function define_bandwidth_constrained_graph(backend::GraphBackend, settings::Gra
         Maximize,
         true,
         Hour(1),
+        2,
         begin
             # The optimal value is the less of either the maximum weight or the minimum capacity depending
             # on which is lower as it bounds the other.

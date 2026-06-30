@@ -23,12 +23,10 @@ function define_transport_routes_graph(backend::GraphBackend, settings::GraphSol
         Minimize,
         false,
         Hour(1),
-        begin
-            # A solution is optimal if it includes every eligible source!
-            linked_sources = get_source_nodes(paths)
-            @info "Linked up $(length(linked_sources)) out of $(length(sources))"
-            all(it -> it ∈ linked_sources, sources)
-        end
+        2,
+        # An optimal solution requires finding all eligible paths between source-target pairs as
+        # we have to find the paths with minimal weight.
+        nothing
     )
 
     # Define a problem to select paths from the path query

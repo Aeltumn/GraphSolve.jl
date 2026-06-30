@@ -224,7 +224,7 @@ function get_shortest_paths(context::ExecutionContext, connector::CypherConnecto
             # GDS is slower and doesn't return edge properties, but it does support a weight
             # property which is required to get accurate shortest paths.
             function process_output_false(row_values)
-                process_output_row(context, output, row_values, true, false, collection)
+                process_output_row(context, output, row_values, false, false, collection)
                 return false
             end
             query_cypher(context.profiler, connector, """
@@ -240,7 +240,7 @@ function get_shortest_paths(context::ExecutionContext, connector::CypherConnecto
                 )
                 YIELD sourceNode, targetNode, path
                 WITH path as p, gds.util.asNode(sourceNode) as s, gds.util.asNode(targetNode) as t
-                RETURN $(get_merged_properties(context))
+                RETURN $(get_merged_properties(context, false))
             """, process_output_false)
         else
             function process_output_true(row_values)

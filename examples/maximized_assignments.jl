@@ -20,6 +20,7 @@ function define_maximized_assignments_graph(backend::GraphBackend, settings::Gra
         Maximize,
         false,
         Hour(1),
+        2,
         begin
             # The optimal solution assigns every destination maximally, assuming there's enough sources.
             score >= sum([node_properties[t]["random"] * (node_properties[t]["max"] / 5) for t in destinations])

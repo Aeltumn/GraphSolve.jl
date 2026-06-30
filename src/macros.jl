@@ -128,11 +128,13 @@ end
 
     [timeout] sets the maximum time the problem can take.
 
+    [rounds] sets the maximum rounds of solving the problem can do.
+
     [stopping_condition] sets the stopping condition of the algorithm. Provided with variables [sources] and [destinations]
     including all possible source and destination nodes, alongside [paths] which is the last best selection. It is also 
     provided [score] which is the value of the optimization function.
 """
-macro optimal(graph, paths, mode, dependent_paths, timeout, stopping_condition)
+macro optimal(graph, paths, mode, dependent_paths, timeout, rounds, stopping_condition)
     esc(quote
         # Find the path instructions and append the constraint to its list
         local instructions = $graph.instructions
@@ -141,10 +143,14 @@ macro optimal(graph, paths, mode, dependent_paths, timeout, stopping_condition)
         if id == nothing
             error("Could not find the instruction for the paths variable, is it from this graph?")
         end
-        local compiled = (sources, destinations, paths, score) -> begin
-            $stopping_condition
+        if isnothing($stopping_condition)
+            local compiled = nothing
+        else
+            local compiled = (sources, destinations, paths, score) -> begin
+                $stopping_condition
+            end
         end
-        instructions[id].optimal = OptimalDefinition($mode, $dependent_paths, compiled, $timeout, time())
+        instructions[id].optimal = OptimalDefinition($mode, $dependent_paths, compiled, $timeout, $rounds)
     end)
 end
 
@@ -211,7 +217,8 @@ function execute_path_instruction(backend::GraphBackend, settings::GraphSolveSet
         Vector{String}(), Vector{String}(), Vector{String}(), Vector{String}(),
         IdDict{NodePropertyDict, Vector{NodePropertyInstruction}}(), IdDict{NodePropertyDict, Vector{NodePropertyInstruction}}(), IdDict{NodePropertyDict, Vector{NodePropertyInstruction}}(), IdDict{EdgePropertyDict, Vector{EdgePropertyInstruction}}(),
         Vector{PathConstraint}(), Vector{PathConstraint}(), Vector{PathConstraint}(), Vector{PathConstraint}(), Vector{PathConstraint}(), Vector{PathConstraint}(),
-        instruction.source, instruction.target
+        instruction.source, instruction.target,
+        time(), time(), 0
     )
 
     # Start by filtering instructions into execution instructions

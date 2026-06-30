@@ -9,7 +9,7 @@ using Statistics
     For each combination, it is ran once to ensure all code paths are JIT compiled,
     then it is run [iter] times and results are averaged from these [iter] runs.
 """
-function benchmark!(iter, graphs)
+function benchmark!(iter, graphs, print_profiler::Bool=false)
     # Set up output logging to log files for later checking
     mkpath("logs")
     average_times = []
@@ -19,6 +19,7 @@ function benchmark!(iter, graphs)
     global_logger(logger)
         
     # Run and average results with logging
+    graphId = 1
     for (graph, settings, handler) in graphs
         # Determine the type of the graph for the log message
         graph_type = "$(typeof(graph.graph))"
@@ -40,7 +41,7 @@ function benchmark!(iter, graphs)
                 start = time()
                 execute!(graph, modified_settings)
                 result = handler(graph)
-                if n > 1
+                if iter == 0 || n > 1
                     push!(times, time() - start)
                     push!(results, result)
                 end
@@ -50,14 +51,24 @@ function benchmark!(iter, graphs)
             reset!(graph)
 
             # Print out the profiling information
-            @info "## Finished running iteration $(n) in $(time() - start) seconds of $(stringified_settings) on $(graph_type), profiler statistics:"
-            @info sprint(show, MIME"text/plain"(), modified_settings.profiler)
-            @info ""
+            @info "## Finished running iteration $(n) on graph #$(graphId) in $(time() - start) seconds of $(stringified_settings) on $(graph_type), profiler statistics:"
+            if print_profiler
+                @info sprint(show, MIME"text/plain"(), modified_settings.profiler)
+            end
+
+            # Wait a moment to print the profiler
+            sleep(1)
         end
 
         # Print the average time of this series
-        average_time = "## Average series time: $(round(mean(times), digits=3))s ($(round(minimum(times), digits=3))s / $(round(maximum(times), digits=3))s), results: [$(join(results, ", "))] for $(stringified_settings) on $(graph_type)"
-        push!(average_times, average_time)
+        if length(times) > 0
+            average_time = "## Average series time on graph #$(graphId): $(round(mean(times), digits=3))s ($(round(minimum(times), digits=3))s / $(round(maximum(times), digits=3))s), results: [$(join(results, ", "))] for $(stringified_settings) on $(graph_type)"
+            push!(average_times, average_time)
+        end
+        graphId += 1
+        
+        # Wait a moment between benchmarks
+        sleep(3)
     end
     
     # Print average times at the end of the file so they are easy to find!

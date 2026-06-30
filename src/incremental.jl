@@ -23,13 +23,21 @@ end
     has been found.
 """
 function has_finished_search(context::ExecutionContext, state::IncrementalState, remaining)
-    @timeit context.profiler "check if search completed" begin 
+    @timeit context.profiler "check if search completed" begin
+        # If there is no optimal function we ignore this until we have 0 remaining!
+        if isnothing(context.instruction.optimal.compiled) && remaining != 0
+            @info "Skipping verification as there are still remaining paths to find and this problem has no intermediate solving"
+            return false
+        end
+
         # Run the constraint solver, determine the current score and determine if it's within
         # the allowed bounds to stop the algorithm.
+        context.constraint_iteration += 1
         copy = Vector{Path}(state.candidate_paths)
         @info "Running verification with $(length(copy)) candidates"
         score, variables = solve_constraints(context, state.problem_instruction, copy, state.best_variables)
-        @info "Finished constraint solving iteration with $(length(copy)) paths out of $(length(state.candidate_paths)) for a score of $(score) with $remaining remaining..."
+        @info "Finished constraint iteration #$(context.constraint_iteration) in $(time() - context.last_time)s with $(length(copy)) paths out of $(length(state.candidate_paths)) for a score of $(score) with $remaining remaining..."
+        context.last_time = time()
 
         if context.instruction.optimal.mode == Minimize
             # Update the best score so far
@@ -38,12 +46,6 @@ function has_finished_search(context::ExecutionContext, state::IncrementalState,
                 state.best_score = score
                 state.best_variables = variables
                 @info "Obtained new best minimum score of $(score) with $(length(copy)) paths selected"
-
-                # Determine if this is the optimal score!
-                if context.instruction.optimal.compiled(state.sources, state.destinations, copy, score)
-                    append!(context.instruction.output, copy)
-                    return true
-                end
             end
         else
             # Update the best score so far
@@ -52,13 +54,13 @@ function has_finished_search(context::ExecutionContext, state::IncrementalState,
                 state.best_score = score
                 state.best_variables = variables
                 @info "Obtained new best maximum score of $(score) with $(length(copy)) paths selected"
-
-                # Determine if this is the optimal score!
-                if context.instruction.optimal.compiled(state.sources, state.destinations, copy, score)
-                    append!(context.instruction.output, copy)
-                    return true
-                end
             end
+        end
+
+        # Determine if this is the optimal score!
+        if isnothing(context.instruction.optimal.compiled) || context.instruction.optimal.compiled(state.sources, state.destinations, state.best_paths, state.best_score)
+            append!(context.instruction.output, state.best_paths)
+            return true
         end
         
         # If this instruction doesn't rely on edges, never iterate as there is nothing to find!
@@ -68,7 +70,13 @@ function has_finished_search(context::ExecutionContext, state::IncrementalState,
         end
 
         # If we've exceeded the timeout, stop the search!
-        if time() - context.instruction.optimal.start_time >= (Dates.value(Millisecond(context.instruction.optimal.timeout)) / 1000)
+        if time() - context.start_time >= (Dates.value(Millisecond(context.instruction.optimal.timeout)) / 1000)
+            append!(context.instruction.output, copy)
+            return true
+        end
+
+        # If we've exceeded the rounds limit, stop the search!
+        if context.constraint_iteration >= context.instruction.optimal.rounds
             append!(context.instruction.output, copy)
             return true
         end
@@ -88,7 +96,8 @@ function incremental_path_search(context::ExecutionContext, connector::Connector
     collection = Set{Path}()
     candidate_paths = Vector{Path}()
     get_shortest_paths(context, connector, context.source, context.target, candidate_paths, collection, problem_instruction.path.weight_property)
-    @info "Found initial collection of $(length(collection)) pairs"
+    @info "Found initial collection of $(length(collection)) pairs in $(time() - context.last_time)s"
+    context.last_time = time()
 
     # Step 1b: Fetch properties for newly added nodes & edges
     fetch_all_properties(context, connector, collection)
@@ -212,6 +221,11 @@ function incremental_path_search(context::ExecutionContext, connector::Connector
                 break
             end
         end
+        
+        # If we've exceeded the timeout, stop the search!
+        if time() - context.start_time >= (Dates.value(Millisecond(context.instruction.optimal.timeout)) / 1000)
+            break
+        end
 
         # Skip constraint solving if there's not enough new paths!
         if added_paths <= context.settings.minimum_paths
@@ -222,6 +236,8 @@ function incremental_path_search(context::ExecutionContext, connector::Connector
         fetch_all_properties(context, connector, candidate_paths)
 
         # Run constraint solving with new candidates and find a valid solution to the problem
+        @info "Finished fetching $(added_paths) additional paths in $(time() - context.last_time)s"
+        context.last_time = time()
         added_paths = 0
         if has_finished_search(context, state, length(options))
             return
@@ -231,6 +247,8 @@ function incremental_path_search(context::ExecutionContext, connector::Connector
     # Run constraint solving one more time and return the best result!
     if added_paths > 0
         fetch_all_properties(context, connector, candidate_paths)
+        @info "Finished fetching $(added_paths) additional paths in $(time() - context.last_time)s"
+        context.last_time = time()
         if has_finished_search(context, state, 0)
             return
         end
