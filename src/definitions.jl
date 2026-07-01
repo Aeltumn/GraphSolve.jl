@@ -115,3 +115,31 @@ function reset!(graph::SolvableGraph)
         end
     end
 end
+
+const stored_benchmarks = Dict{String, Vector{Float64}}()
+
+"""
+    get_benchmark_times
+
+    Returns the average benchmark times of all ids.
+"""
+function get_benchmark_times()
+    results = Dict{String, Float64}()
+    for (id, times) in stored_benchmarks
+        results[id] = round(mean(times), digits=3)
+    end
+    empty!(stored_benchmarks)
+    return results
+end
+
+"""
+    submit_benchmark
+
+    Submit a benchmark time for the given id.
+"""
+function submit_benchmark(id::String, context::ExecutionContext)
+    time_taken = time() - context.last_time
+    @info "Submitting benchmark `$(id)` for $(time_taken)s"
+    push!(get!(stored_benchmarks, id, Vector{Float64}()), time_taken)
+    context.last_time = time()
+end

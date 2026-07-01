@@ -140,7 +140,13 @@ macro schedule_task(settings, expr)
         if $(esc(settings)).use_async_scheduling
             Threads.@spawn $(esc(expr))
         else
-            @async $(esc(expr))
+            $(esc(expr))
+
+            # Create a dummy task!
+            dummy = Task(() -> nothing)
+            schedule(dummy)
+            wait(dummy)
+            dummy
         end
     end
 end

@@ -29,15 +29,18 @@ function has_finished_search(context::ExecutionContext, state::IncrementalState,
             @info "Skipping verification as there are still remaining paths to find and this problem has no intermediate solving"
             return false
         end
+        
+        # Submit a benchmark before starting search
+        context.constraint_iteration += 1
+        submit_benchmark("Finished preparing for search #$(context.constraint_iteration)", context)
 
         # Run the constraint solver, determine the current score and determine if it's within
         # the allowed bounds to stop the algorithm.
-        context.constraint_iteration += 1
         copy = Vector{Path}(state.candidate_paths)
         @info "Running verification with $(length(copy)) candidates"
         score, variables = solve_constraints(context, state.problem_instruction, copy, state.best_variables)
         @info "Finished constraint iteration #$(context.constraint_iteration) in $(time() - context.last_time)s with $(length(copy)) paths out of $(length(state.candidate_paths)) for a score of $(score) with $remaining remaining..."
-        context.last_time = time()
+        submit_benchmark("Finished constraint iteration #$(context.constraint_iteration)", context)
 
         if context.instruction.optimal.mode == Minimize
             # Update the best score so far
@@ -97,7 +100,7 @@ function incremental_path_search(context::ExecutionContext, connector::Connector
     candidate_paths = Vector{Path}()
     get_shortest_paths(context, connector, context.source, context.target, candidate_paths, collection, problem_instruction.path.weight_property)
     @info "Found initial collection of $(length(collection)) pairs in $(time() - context.last_time)s"
-    context.last_time = time()
+    submit_benchmark("Fetch shortest paths", context)
 
     # Step 1b: Fetch properties for newly added nodes & edges
     fetch_all_properties(context, connector, collection)
@@ -236,8 +239,7 @@ function incremental_path_search(context::ExecutionContext, connector::Connector
         fetch_all_properties(context, connector, candidate_paths)
 
         # Run constraint solving with new candidates and find a valid solution to the problem
-        @info "Finished fetching $(added_paths) additional paths in $(time() - context.last_time)s"
-        context.last_time = time()
+        @info "Finished fetching $(added_paths) additional paths"
         added_paths = 0
         if has_finished_search(context, state, length(options))
             return
@@ -246,9 +248,8 @@ function incremental_path_search(context::ExecutionContext, connector::Connector
     
     # Run constraint solving one more time and return the best result!
     if added_paths > 0
+        @info "Finished fetching $(added_paths) additional paths"
         fetch_all_properties(context, connector, candidate_paths)
-        @info "Finished fetching $(added_paths) additional paths in $(time() - context.last_time)s"
-        context.last_time = time()
         if has_finished_search(context, state, 0)
             return
         end

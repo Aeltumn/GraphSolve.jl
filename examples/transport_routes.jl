@@ -14,7 +14,7 @@ function define_transport_routes_graph(backend::GraphBackend, settings::GraphSol
     extract_edge_properties!(graph, paths, edge_properties, "weight")
     
     # Ensure every route contains a high value node
-    @apply_path_constraint(graph, paths, any(n -> node_properties[n]["random"] >= 90, nodes))
+    @apply_path_constraint(graph, paths, any(n -> node_properties[n]["random"] >= 70, nodes))
     
     # Define the optimal value of the problem
     @optimal(

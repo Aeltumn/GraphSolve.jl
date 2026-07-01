@@ -98,7 +98,7 @@ end
     Use variables `src`, `dst`, `node`, `nodes`, `edge`, or `edges` to reference path elements.
 """
 macro apply_path_constraint(graph, paths, constraint)
-    esc(quote
+    return esc(quote
         # Find the path instructions and append the constraint to its list
         local instructions = $graph.instructions
         local p = $paths
@@ -135,7 +135,8 @@ end
     provided [score] which is the value of the optimization function.
 """
 macro optimal(graph, paths, mode, dependent_paths, timeout, rounds, stopping_condition)
-    esc(quote
+    no_stopping_condition = stopping_condition === :nothing
+    return esc(quote
         # Find the path instructions and append the constraint to its list
         local instructions = $graph.instructions
         local pa = $paths
@@ -143,7 +144,7 @@ macro optimal(graph, paths, mode, dependent_paths, timeout, rounds, stopping_con
         if id == nothing
             error("Could not find the instruction for the paths variable, is it from this graph?")
         end
-        if isnothing($stopping_condition)
+        if $no_stopping_condition
             local compiled = nothing
         else
             local compiled = (sources, destinations, paths, score) -> begin

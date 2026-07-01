@@ -10,6 +10,7 @@ using HiGHS
 using SCIP
 using Logging
 using LoggingExtras
+using Statistics
 
 include("selectors.jl")
 include("structs.jl")

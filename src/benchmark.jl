@@ -1,7 +1,4 @@
 # An optional system for benchmarking GraphSolve.
-using Dates
-using Statistics
-
 """
     benchmark
 
@@ -12,11 +9,27 @@ using Statistics
 function benchmark!(iter, graphs, print_profiler::Bool=false)
     # Set up output logging to log files for later checking
     mkpath("logs")
-    average_times = []
-    
-    logfile = "logs/$(Dates.format(now(), "yyyy-mm-dd_HH-MM-SS")).log"
-    logger = TeeLogger(ConsoleLogger(stdout), FileLogger(logfile))
-    global_logger(logger)
+    result_messages = []
+
+    if iter == 0
+        logger = ConsoleLogger(stdout)
+    else    
+        logfile = "logs/$(Dates.format(now(), "yyyy-mm-dd_HH-MM-SS")).log"
+        logger = TeeLogger(ConsoleLogger(stdout), FileLogger(logfile))
+    end
+
+    # Prepend a timestamp to all log messages
+    timestampLogger = TransformerLogger(logger) do log
+        merge(log, (; message = "[$(Dates.format(now(), "yyyy-mm-dd HH:MM:SS.sss"))] $(log.message)"))
+    end
+    global_logger(timestampLogger)
+
+    # Determine how many iterations should be run
+    if iter == 0
+        iterations = 1
+    else
+        iterations = iter
+    end
         
     # Run and average results with logging
     graphId = 1
@@ -32,7 +45,7 @@ function benchmark!(iter, graphs, print_profiler::Bool=false)
 
         times = []
         results = []
-        for n in 1:(iter + 1)
+        for n in 1:iterations
             # Create a copy of the settings with a new profiler
             modified_settings = @set settings.profiler = TimerOutput()
 
@@ -41,17 +54,15 @@ function benchmark!(iter, graphs, print_profiler::Bool=false)
                 start = time()
                 execute!(graph, modified_settings)
                 result = handler(graph)
-                if iter == 0 || n > 1
-                    push!(times, time() - start)
-                    push!(results, result)
-                end
+                push!(times, time() - start)
+                push!(results, result)
             end
 
             # Reset all data afterwards
             reset!(graph)
 
             # Print out the profiling information
-            @info "## Finished running iteration $(n) on graph #$(graphId) in $(time() - start) seconds of $(stringified_settings) on $(graph_type), profiler statistics:"
+            @info "# Finished running iteration $(n) on graph #$(graphId) in $(time() - start) seconds of $(stringified_settings) on $(graph_type), profiler statistics:"
             if print_profiler
                 @info sprint(show, MIME"text/plain"(), modified_settings.profiler)
             end
@@ -62,9 +73,15 @@ function benchmark!(iter, graphs, print_profiler::Bool=false)
 
         # Print the average time of this series
         if length(times) > 0
-            average_time = "## Average series time on graph #$(graphId): $(round(mean(times), digits=3))s ($(round(minimum(times), digits=3))s / $(round(maximum(times), digits=3))s), results: [$(join(results, ", "))] for $(stringified_settings) on $(graph_type)"
-            push!(average_times, average_time)
+            average_time = "-> ## Average series time on graph #$(graphId): $(round(mean(times), digits=3))s ($(round(minimum(times), digits=3))s / $(round(maximum(times), digits=3))s), results: [$(join(results, ", "))] for $(stringified_settings) on $(graph_type)"
+            push!(result_messages, average_time)
+            @info average_time
         end
+        benchmark_time = "-> ## Benchmarking times: $(get_benchmark_times())"
+        push!(result_messages, benchmark_time)
+        @info benchmark_time
+        push!(result_messages, "")
+
         graphId += 1
         
         # Wait a moment between benchmarks
@@ -73,8 +90,9 @@ function benchmark!(iter, graphs, print_profiler::Bool=false)
     
     # Print average times at the end of the file so they are easy to find!
     @info ""
-    @info "### Average time results"
-    for average_time in average_times
-        @info average_time
+    @info "### Results"
+    for message in result_messages
+        @info message
     end
+    @info ""
 end
